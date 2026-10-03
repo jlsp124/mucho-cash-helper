@@ -13,7 +13,7 @@
   --bg: #f7f6f0;
   --surface: #fffefa;
   --ink: #253e35;
-  --muted: #67736b;
+  --muted: #526258;
   --line: #e1e5db;
   --primary: #224f3e;
   --on-primary: #fffef7;
@@ -1442,11 +1442,9 @@ a {
 @keyframes sheet-in {
   from {
     transform: translateY(25px);
-    opacity: 0.7;
   }
   to {
     transform: translateY(0);
-    opacity: 1;
   }
 }
 @media (min-width: 650px) {
