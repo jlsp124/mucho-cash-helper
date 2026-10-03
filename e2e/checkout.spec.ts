@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { freshDefaults } from '../src/menu'
-import { verified, type Config } from '../src/model'
+import { unknown, verified, type Config } from '../src/model'
 
 async function setup(page: Page, edit?: (c: Config) => void) {
   const c = freshDefaults()
@@ -26,8 +26,8 @@ async function setup(page: Page, edit?: (c: Config) => void) {
   await page.goto('./')
 }
 async function burrito(page: Page, protein = 'Grilled Chicken') {
-  await page.getByRole('button', { name: /BUILD YOUR OWN.*Regular Burrito/ }).click()
-  await page.getByRole('button', { name: new RegExp(`^${protein} `) }).click()
+  await page.getByRole('button', { name: /^Regular Burrito \$/ }).click()
+  await page.getByRole('button', { name: new RegExp(`^${protein}(?: |$)`) }).click()
   await page.getByRole('button', { name: /Add to order/ }).click()
 }
 async function review(page: Page) {
@@ -41,7 +41,7 @@ test('chicken burrito, $20 tender, done, history and next order', async ({ page 
   await expect(page.locator('.cash-total')).toContainText('$16.20')
   await page.getByRole('button', { name: '$20', exact: true }).click()
   await expect(page.locator('.change-amount h3')).toHaveText('$3.80')
-  await expect(page.locator('.denominations')).toContainText('$2 coin')
+  await expect(page.locator('.denominations')).toContainText('$2')
   await page.getByRole('button', { name: 'DONE / NEXT ORDER' }).click()
   await expect(page.locator('.cart-bar')).toContainText('0 items')
   await page.getByRole('button', { name: 'Order history', exact: true }).click()
@@ -58,7 +58,7 @@ test('premium protein, live price, paid extra and product override', async ({ pa
       price: verified(1900),
     }
   })
-  await page.getByRole('button', { name: /BUILD YOUR OWN.*Regular Burrito/ }).click()
+  await page.getByRole('button', { name: /^Regular Burrito \$/ }).click()
   await page.getByRole('button', { name: /^Beef Barbacoa / }).click()
   await expect(page.locator('.builder-price')).toHaveText('$17.95')
   await page.getByRole('button', { name: /^Steak / }).click()
@@ -74,7 +74,7 @@ test('two burritos and chips, quantity and undo', async ({ page }) => {
   await burrito(page)
   await burrito(page)
   await page.getByRole('button', { name: 'Sides', exact: true }).click()
-  await page.getByRole('button', { name: /SIDES.*Chips \+ Queso/ }).click()
+  await page.getByRole('button', { name: /^Chips \+ Queso \$/ }).click()
   await review(page)
   await expect(page.locator('.cash-total')).toContainText('$38.70')
   await page.getByRole('button', { name: 'Decrease Regular Burrito quantity' }).click()
@@ -103,7 +103,7 @@ test('multiple soda and non-soda drinks', async ({ page }) => {
     .locator('.product-card')
     .filter({ has: page.getByRole('heading', { name: 'Canned Pepsi', exact: true }) })
     .click()
-  await page.getByRole('button', { name: /DRINKS.*Bottled Water/ }).click()
+  await page.getByRole('button', { name: /^Bottled Water \$/ }).click()
   await page
     .locator('.product-card')
     .filter({ has: page.getByRole('heading', { name: 'Jarritos', exact: true }) })
@@ -143,20 +143,24 @@ test('edit protein and extras; remove and undo; clear confirmation', async ({ pa
   await page.getByRole('button', { name: 'Keep order', exact: true }).click()
   await expect(page.locator('.receipt-lines')).toContainText('Regular Burrito')
 })
-test('unknown protein, extra and deposit require explicit saved prices', async ({ page }) => {
-  await page.goto('./')
-  await page.getByRole('button', { name: /BUILD YOUR OWN.*Regular Burrito/ }).click()
-  await page.getByRole('button', { name: /^Grilled Chicken / }).click()
+test('explicit custom unknowns still require saved prices', async ({ page }) => {
+  await setup(page, (c) => {
+    c.proteins[0].price = unknown()
+    c.extras[0].price = unknown()
+    c.products.find((p) => p.id === 'canned-pepsi')!.deposit = unknown()
+  })
+  await page.getByRole('button', { name: /^Regular Burrito \$/ }).click()
+  await page.getByRole('button', { name: /^Grilled Chicken(?: |$)/ }).click()
   await expect(page.getByRole('button', { name: /Add to order/ })).toBeDisabled()
-  await page.getByRole('button', { name: 'Confirm included · $0' }).click()
+  await page.getByRole('button', { name: 'Included' }).click()
   await page.getByRole('button', { name: /Guacamole Set price/ }).click()
   await page.getByRole('textbox', { name: 'Guacamole extra price', exact: true }).fill('1.75')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.locator('.builder-price')).toHaveText('$17.20')
   await page.getByRole('button', { name: /Add to order/ }).click()
   await page.reload()
-  await page.getByRole('button', { name: /BUILD YOUR OWN.*Regular Burrito/ }).click()
-  await page.getByRole('button', { name: /^Grilled Chicken Included/ }).click()
+  await page.getByRole('button', { name: /^Regular Burrito \$/ }).click()
+  await page.getByRole('button', { name: /^Grilled Chicken$/ }).click()
   await expect(page.locator('.builder-price')).toHaveText('$15.45')
   await page.getByRole('button', { name: 'Close Regular Burrito' }).click()
   await page.getByRole('button', { name: 'Drinks', exact: true }).click()
@@ -165,13 +169,16 @@ test('unknown protein, extra and deposit require explicit saved prices', async (
     .filter({ has: page.getByRole('heading', { name: 'Canned Pepsi', exact: true }) })
     .click()
   await expect(page.getByRole('button', { name: /Add to order/ })).toBeDisabled()
-  await page.getByRole('button', { name: 'No deposit · $0' }).click()
+  await page.getByRole('button', { name: 'No deposit' }).click()
   await expect(page.getByRole('button', { name: /Add to order/ })).toBeEnabled()
 })
 test('price editor persists, custom product, import and reset protection', async ({ page }) => {
   await setup(page)
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
-  await page.getByRole('button', { name: /^Regular Burrito Unverified/ }).click()
+  await page.getByRole('button', { name: 'Menu & Prices', exact: true }).click()
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /^Regular Burrito \$/ })
+    .click()
   await page.getByRole('textbox', { name: 'Base price', exact: true }).fill('16.00')
   await page.getByRole('button', { name: 'Save product', exact: true }).click()
   await page.getByRole('button', { name: 'Add custom product' }).click()
@@ -180,15 +187,13 @@ test('price editor persists, custom product, import and reset protection', async
   await page.getByRole('button', { name: 'Save product', exact: true }).click()
   await page.getByRole('tab', { name: 'Transfer' }).click()
   await page.getByRole('button', { name: 'Reset to shipped defaults' }).click()
-  await page.getByRole('button', { name: 'Keep current setup' }).click()
+  await page.getByRole('button', { name: 'Keep current menu' }).click()
   await page.getByRole('textbox', { name: 'Or paste configuration' }).fill('{bad')
   await page.getByRole('button', { name: 'Review pasted configuration' }).click()
   await expect(page.getByRole('alert')).toContainText('Invalid configuration')
-  await page.getByRole('button', { name: 'Close Settings' }).click()
+  await page.getByRole('button', { name: 'Close Menu & Prices' }).click()
   await page.reload()
-  await expect(page.getByRole('button', { name: /BUILD YOUR OWN.*Regular Burrito/ })).toContainText(
-    '$16.00',
-  )
+  await expect(page.getByRole('button', { name: /^Regular Burrito \$/ })).toContainText('$16.00')
   await page.getByRole('button', { name: 'More', exact: true }).click()
   await expect(page.getByRole('button', { name: /Staff special/ })).toBeVisible()
 })
@@ -206,7 +211,7 @@ test('offline reload, configured checkout and history', async ({ page, context }
   })
   await context.setOffline(true)
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Good food. Quick maths.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Burritos' })).toBeVisible()
   await burrito(page)
   await review(page)
   await page.getByRole('button', { name: '$20', exact: true }).click()
@@ -219,15 +224,15 @@ test('required $13.65 Canadian denomination breakdown', async ({ page }) => {
     c.products.find((p) => p.id === 'chips-queso')!.price = verified(3462)
   })
   await page.getByRole('button', { name: 'Sides', exact: true }).click()
-  await page.getByRole('button', { name: /SIDES.*Chips \+ Queso/ }).click()
+  await page.getByRole('button', { name: /^Chips \+ Queso \$/ }).click()
   await review(page)
   await expect(page.locator('.cash-total')).toContainText('$36.35')
   await page.getByRole('button', { name: '$50', exact: true }).click()
   await expect(page.locator('.change-amount h3')).toHaveText('$13.65')
   await expect(page.locator('.denomination')).toHaveText([
-    '$10 bill× 1',
-    '$2 coin× 1',
-    '$1 coin× 1',
+    '$10× 1',
+    '$2× 1',
+    '$1× 1',
     '25¢× 2',
     '10¢× 1',
     '5¢× 1',
@@ -240,7 +245,7 @@ test('cash rounding up is visible and custom pennies are rejected', async ({ pag
     c.products.find((p) => p.id === 'chips-queso')!.price = verified(503)
   })
   await page.getByRole('button', { name: 'Sides', exact: true }).click()
-  await page.getByRole('button', { name: /SIDES.*Chips \+ Queso/ }).click()
+  await page.getByRole('button', { name: /^Chips \+ Queso \$/ }).click()
   await review(page)
   await expect(page.locator('.receipt-totals')).toContainText('+$0.02')
   await expect(page.locator('.cash-total')).toContainText('$5.30')
@@ -255,7 +260,7 @@ test('cash rounding up is visible and custom pennies are rejected', async ({ pag
 
 test('export and successful import transfer the exact configuration', async ({ page }) => {
   await setup(page)
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Menu & Prices', exact: true }).click()
   await page.getByRole('tab', { name: 'Transfer' }).click()
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export configuration JSON' }).click()
@@ -268,20 +273,19 @@ test('export and successful import transfer the exact configuration', async ({ p
     .fill(JSON.stringify(newConfig))
   await page.getByRole('button', { name: 'Review pasted configuration' }).click()
   await page.getByRole('button', { name: 'Replace configuration', exact: true }).click()
-  await page.getByRole('button', { name: 'Close Settings' }).click()
-  await expect(page.getByRole('button', { name: /BUILD YOUR OWN.*Regular Burrito/ })).toContainText(
-    '$19.99',
-  )
+  await page.getByRole('button', { name: 'Close Menu & Prices' }).click()
+  await expect(page.getByRole('button', { name: /^Regular Burrito \$/ })).toContainText('$19.99')
   await page.reload()
-  await expect(page.getByRole('button', { name: /BUILD YOUR OWN.*Regular Burrito/ })).toContainText(
-    '$19.99',
-  )
+  await expect(page.getByRole('button', { name: /^Regular Burrito \$/ })).toContainText('$19.99')
 })
 
 test('Settings exposes per-size protein prices and rejects malformed money', async ({ page }) => {
   await setup(page)
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
-  await page.getByRole('button', { name: /^Regular Burrito Unverified/ }).click()
+  await page.getByRole('button', { name: 'Menu & Prices', exact: true }).click()
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /^Regular Burrito \$/ })
+    .click()
   await page.getByText('Protein prices for this product / size', { exact: true }).click()
   await page.getByRole('combobox', { name: 'Beef Barbacoa pricing mode' }).selectOption('total')
   await page.getByRole('textbox', { name: 'Beef Barbacoa full price', exact: true }).fill('19.50')
@@ -290,8 +294,8 @@ test('Settings exposes per-size protein prices and rejects malformed money', asy
   await expect(page.getByRole('heading', { name: 'Edit product' })).toBeVisible()
   await page.getByRole('textbox', { name: 'Base price', exact: true }).fill('15.45')
   await page.getByRole('button', { name: 'Save product', exact: true }).click()
-  await page.getByRole('button', { name: 'Close Settings' }).click()
-  await page.getByRole('button', { name: /BUILD YOUR OWN.*Regular Burrito/ }).click()
+  await page.getByRole('button', { name: 'Close Menu & Prices' }).click()
+  await page.getByRole('button', { name: /^Regular Burrito \$/ }).click()
   await page.getByRole('button', { name: /^Beef Barbacoa / }).click()
   await expect(page.locator('.builder-price')).toHaveText('$19.50')
 })
@@ -324,7 +328,7 @@ for (const width of [320, 375, 390, 430, 1200]) {
 test('light and dark accessibility, keyboard dialog focus', async ({ page }) => {
   await setup(page)
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
-  await page.getByRole('button', { name: /BUILD YOUR OWN.*Regular Burrito/ }).click()
+  await page.getByRole('button', { name: /^Regular Burrito \$/ }).click()
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
   await page.keyboard.press('Escape')
   await expect(page.locator('dialog[open]')).toHaveCount(0)

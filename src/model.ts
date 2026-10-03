@@ -40,10 +40,14 @@ export const productSchema = modifierSchema.extend({
     z.object({ mode: z.enum(['adjustment', 'total']), price: priceSchema }),
   ),
   extraOverrides: z.record(z.string(), priceSchema),
+  excludedProteinIds: z.array(z.string()).max(50).default([]),
+  excludedExtraIds: z.array(z.string()).max(50).default([]),
 })
 export const configSchema = z
   .object({
     version: z.literal(1),
+    // Default data has its own revision; v1 exports remain readable.
+    defaultsVersion: z.number().int().min(1).max(2).default(1),
     products: z.array(productSchema).max(500),
     proteins: z.array(modifierSchema).max(50),
     extras: z.array(modifierSchema).max(50),

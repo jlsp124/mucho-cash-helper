@@ -1,9 +1,8 @@
 import { type Config, type Product, type Category, type Price, unknown, verified } from './model'
 
 const seed = (cents: number): Price => ({ cents, verified: false, source: 'online' })
-// Actual PG Uber Eats item configurators inspected 2026-10-03, including nested taco groups;
-// regular burrito modifiers cross-checked in the PG DoorDash configurator.
-// Delivery prices may differ from the physical register; provenance belongs here/README only.
+// Frozen v1 shipped data, used only to distinguish defaults from intentional edits.
+// Never update these values when changing the current menu.
 // https://www.ubereats.com/ca/store/mucho-burrito-1600-15th-ave-unit-145/3J5voFnUUfG2JOdE4Erf_w
 const product = (
   id: string,
@@ -26,12 +25,11 @@ const product = (
   proteinOverrides: {},
   extraOverrides: {},
   excludedProteinIds: [],
-  excludedExtraIds: ['salsa-side'],
+  excludedExtraIds: [],
 })
-export const DEFAULTS_VERSION = 2
-export const defaults: Config = {
+export const legacyDefaults: Config = {
   version: 1,
-  defaultsVersion: DEFAULTS_VERSION,
+  defaultsVersion: 1,
   taxes: { gstBasisPoints: 500, pstBasisPoints: 700 },
   products: [
     product(
@@ -87,10 +85,9 @@ export const defaults: Config = {
       ['guacamole', 'Guacamole · 4oz', 375],
       ['extra-tortilla', '10-inch Tortilla', 55],
     ].map(([id, name, amount]) => product(String(id), String(name), 'Sides', Number(amount))),
-    // Plain chips has no current PG public listing. Do not invent a price.
-    { ...product('chips', 'Chips', 'Sides', null), enabled: false },
+    product('chips', 'Chips', 'Sides', null),
     ...[
-      // Named variants share the PG canned/bottled menu price.
+      // Canned/Bottled Pop listing prices seed the named Pepsi variants; verify each flavour.
       ['Canned Pepsi', 'SODA', 325],
       ['Canned Diet Pepsi', 'SODA', 325],
       ['Canned Ginger Ale', 'SODA', 325],
@@ -112,10 +109,7 @@ export const defaults: Config = {
         amount === null ? null : Number(amount),
       ),
       taxClass: taxClass as Product['taxClass'],
-      // BC Return-It: 10 cents per ready-to-drink container, 40 cents per four-pack.
-      // https://www.return-it.ca/beverage/recycling/recycling-plastic-bottles/
-      deposit: seed(name === 'Fountain Soda' ? 0 : String(name).startsWith('4 ') ? 40 : 10),
-      enabled: name !== 'Fountain Soda', // Unlisted PG fountain price remains editable.
+      deposit: name === 'Fountain Soda' ? verified(0) : unknown(),
     })),
     {
       ...product(
@@ -127,7 +121,7 @@ export const defaults: Config = {
         'Check local availability & beverage tax class before enabling.',
       ),
       taxClass: 'NON_SODA_DRINK',
-      deposit: seed(10),
+      deposit: unknown(),
       enabled: false,
     },
     product('churros', 'Churro Fries', 'Desserts', 395),
@@ -184,54 +178,13 @@ export const defaults: Config = {
   ].map((name) => ({
     id: name.toLowerCase().replaceAll(' ', '-'),
     name,
-    // Veggies corresponds to Fajita Veggies + No Protein, both included.
-    price: seed(['Steak', 'Beef Barbacoa', 'Shiitake Carnitas'].includes(name) ? 295 : 0),
+    price: unknown(),
     enabled: true,
   })),
-  extras: [
-    { id: 'guacamole', name: 'Guacamole', price: seed(300), enabled: true },
-    { id: 'queso', name: 'Queso', price: seed(300), enabled: true },
-    // PG extra-protein group charges the same 375 cents for all eight proteins.
-    { id: 'extra-protein', name: 'Extra Protein', price: seed(375), enabled: true },
-    // Not offered as a paid modifier in either inspected PG delivery configurator.
-    // Leave unknown and disabled rather than borrowing an unrelated cheese/queso price.
-    { id: 'extra-cheese', name: 'Extra Cheese', price: unknown(), enabled: false },
-    { id: 'honey-chili-sauce', name: 'Honey Chili Pepper Sauce', price: seed(125), enabled: true },
-    { id: 'salsa-side', name: 'Salsa Side', price: seed(275), enabled: true },
-  ],
+  extras: ['Guacamole', 'Queso', 'Extra Protein', 'Extra Cheese'].map((name) => ({
+    id: name.toLowerCase().replaceAll(' ', '-'),
+    name,
+    price: unknown(),
+    enabled: true,
+  })),
 }
-
-// Quesadilla includes cheese/veggies, but its primary meat/shiitake costs 375 cents.
-// Crispy Chicken is only listed as an extra protein, so omit it as a primary choice.
-const quesadilla = defaults.products.find((p) => p.id === 'quesadilla')!
-quesadilla.proteinOverrides = Object.fromEntries(
-  defaults.proteins
-    .filter((p) => p.id !== 'veggies' && p.id !== 'crispy-chicken')
-    .map((p) => [p.id, { mode: 'adjustment', price: seed(375) }]),
-)
-quesadilla.excludedProteinIds = ['crispy-chicken']
-quesadilla.excludedExtraIds = ['honey-chili-sauce', 'salsa-side']
-for (const id of ['taco-solo', 'taco-trio']) {
-  const taco = defaults.products.find((p) => p.id === id)!
-  const quantity = id === 'taco-trio' ? 3 : 1
-  // The trio builder applies one protein to all three tacos; each nested PG group
-  // charges 200 for steak/barbacoa or 375 for shiitake. Base: 545 + 990 = 1535.
-  taco.proteinOverrides = {
-    steak: { mode: 'adjustment', price: seed(200 * quantity) },
-    'beef-barbacoa': { mode: 'adjustment', price: seed(200 * quantity) },
-    'shiitake-carnitas': { mode: 'adjustment', price: seed(375 * quantity) },
-  }
-  taco.extraOverrides = { 'honey-chili-sauce': seed(125 * quantity) }
-  taco.excludedProteinIds = ['crispy-chicken']
-  taco.excludedExtraIds = ['guacamole', 'queso', 'extra-protein', 'extra-cheese', 'salsa-side']
-}
-defaults.products.find((p) => p.id === 'mucho-burrito')!.excludedExtraIds = []
-// MUCHO's Way builders expose the same proteins, but no standalone paid extras.
-// The 1345-cent signature burrito is Small (Regular +200, Mucho +570).
-for (const id of ['signature-burrito', 'signature-bowl'])
-  defaults.products.find((p) => p.id === id)!.excludedExtraIds = defaults.extras.map((e) => e.id)
-// Descriptions are retained in the schema for old/custom imports, never checkout copy.
-defaults.products.forEach((p) => {
-  p.description = ''
-})
-export const freshDefaults = (): Config => structuredClone(defaults)

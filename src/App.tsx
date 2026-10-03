@@ -5,7 +5,6 @@ import {
   Check,
   ChevronRight,
   Clock3,
-  Leaf,
   Minus,
   Plus,
   Settings2,
@@ -40,123 +39,6 @@ import { ToastContext } from './context'
 const completionTimestamp = () => new Date().toISOString()
 
 type Selection = { productId: string; proteinId?: string; extraIds: string[]; editingId?: string }
-function ProductArt({ category, large = false }: { category: Category; large?: boolean }) {
-  return (
-    <span className={`product-art ${large ? 'large' : ''}`} aria-hidden="true">
-      {category === 'Burritos' || category === 'Quesadilla' ? (
-        <svg viewBox="0 0 100 100">
-          <path
-            d="M29 79 18 56c-5-10 0-23 11-29L62 9c9-5 22-2 27 8s3 23-7 29L48 81c-7 5-15 5-19-2Z"
-            fill="var(--tortilla)"
-            stroke="var(--art-line)"
-            strokeWidth="2"
-          />
-          <path
-            d="M30 29 71 55M24 40l34 27M28 60l16 13"
-            stroke="var(--art-line)"
-            strokeWidth="2"
-            opacity=".35"
-          />
-          <path d="m39 78 9 4 34-35-15-9Z" fill="var(--foil)" />
-          <path
-            d="m53 69 13-5M63 56l13-6M46 76l11-5"
-            stroke="var(--art-line)"
-            strokeWidth="1.5"
-            opacity=".35"
-          />
-          <ellipse
-            cx="74"
-            cy="25"
-            rx="13"
-            ry="10"
-            transform="rotate(-29 74 25)"
-            fill="var(--art-line)"
-          />
-          <path d="m65 25 7-6 9 5-7 7Z" fill="#7f9a54" />
-          <path d="m76 19 7 5M66 26l5 5" stroke="#ef9c71" strokeWidth="4" />
-        </svg>
-      ) : category === 'Bowls / Salads' || category === 'Sides' ? (
-        <svg viewBox="0 0 100 100">
-          <ellipse
-            cx="50"
-            cy="37"
-            rx="38"
-            ry="19"
-            fill="var(--tortilla)"
-            stroke="var(--art-line)"
-            strokeWidth="2"
-          />
-          <path
-            d="M12 38c2 29 18 45 38 45s36-16 38-45c-14 17-62 17-76 0Z"
-            fill="var(--foil)"
-            stroke="var(--art-line)"
-            strokeWidth="2"
-          />
-          <path d="m28 34 12-9 10 8 16-8 12 13-18 10-16-9-14 5Z" fill="#829c59" />
-          <path d="m37 36 10 6m12-12 9 7" stroke="#d88859" strokeWidth="7" />
-        </svg>
-      ) : category === 'Tacos' ? (
-        <svg viewBox="0 0 100 100">
-          <path
-            d="M12 69a38 38 0 0 1 76 0Z"
-            fill="#dcb967"
-            stroke="var(--art-line)"
-            strokeWidth="2"
-          />
-          <path d="M25 61a25 25 0 0 1 50 0" fill="none" stroke="#78954e" strokeWidth="10" />
-          <path
-            d="M15 70a37 37 0 0 1 74 0Z"
-            fill="var(--tortilla)"
-            stroke="var(--art-line)"
-            strokeWidth="2"
-          />
-          <path
-            d="m29 57 5 4m13-14 4 5m14 6 5 3"
-            stroke="var(--art-line)"
-            strokeWidth="2"
-            opacity=".3"
-          />
-        </svg>
-      ) : category === 'Drinks' ? (
-        <svg viewBox="0 0 100 100">
-          <path
-            d="M34 17h32l7 12v47q0 9-23 9T27 76V29Z"
-            fill="var(--foil)"
-            stroke="var(--art-line)"
-            strokeWidth="2"
-          />
-          <path d="M29 37h42v31H29Z" fill="#789a83" />
-          <path d="m36 53 10 8 17-17" stroke="#faf7ef" fill="none" strokeWidth="3" />
-          <ellipse
-            cx="50"
-            cy="19"
-            rx="16"
-            ry="5"
-            fill="var(--tortilla)"
-            stroke="var(--art-line)"
-            strokeWidth="2"
-          />
-        </svg>
-      ) : (
-        <svg viewBox="0 0 100 100">
-          <path
-            d="m20 68 44-43q6-6 13 1t1 12L34 81Z"
-            fill="var(--tortilla)"
-            stroke="var(--art-line)"
-            strokeWidth="2"
-          />
-          <path
-            d="m31 62 12 10m0-22 12 10m0-22 12 10"
-            stroke="var(--art-line)"
-            strokeWidth="2"
-            opacity=".4"
-          />
-        </svg>
-      )}
-    </span>
-  )
-}
-
 export default function App() {
   const [loaded] = useState(loadState)
   const [config, setConfig] = useState(loaded.state.config)
@@ -525,7 +407,7 @@ export default function App() {
             </button>
             <button
               className="icon-button"
-              aria-label="Settings"
+              aria-label="Menu & Prices"
               onClick={() => setScreen('settings')}
             >
               <Settings2 size={22} />
@@ -537,7 +419,11 @@ export default function App() {
             <span className="eyebrow">PRINCE GEORGE, BC</span>
             <span className="local-status">
               {!online ? <WifiOff size={13} /> : <span className="status-dot" />}
-              {!online ? 'Offline' : offlineReady ? 'Offline ready' : 'Device-local'}
+              {!online
+                ? 'Offline'
+                : offlineReady || Boolean(navigator.serviceWorker?.controller)
+                  ? 'Offline ready'
+                  : 'Online'}
             </span>
           </div>
           {warning && (
@@ -560,26 +446,6 @@ export default function App() {
               </button>
             </div>
           )}
-          <section className="menu-intro">
-            <div>
-              <span className="eyebrow accent">CASH CHECKOUT, MADE SIMPLE</span>
-              <h1>
-                Good food.
-                <br />
-                <span>Quick maths.</span>
-              </h1>
-              <p>Build the order. Count the change. Done.</p>
-            </div>
-            <div className="hero-stamp" aria-hidden="true">
-              <Leaf size={22} />
-              <span>
-                FRESH FOOD
-                <br />
-                FAST CHECKOUT
-              </span>
-              <span className="stamp-plus">+</span>
-            </div>
-          </section>
           <nav className="category-nav" aria-label="Menu categories">
             {categories.map((c) => (
               <button
@@ -601,57 +467,13 @@ export default function App() {
           </nav>
           <section className="menu-section" aria-labelledby="category-title">
             <div className="section-heading">
-              <div>
-                <h2 id="category-title">
-                  {category === 'Burritos'
-                    ? 'Build a burrito'
-                    : category === 'Bowls / Salads'
-                      ? 'Bowls & salads'
-                      : category === 'More'
-                        ? 'A little more'
-                        : category}
-                </h2>
-                <p>
-                  {category === 'Burritos'
-                    ? 'Pick your size, then your protein.'
-                    : category === 'Drinks'
-                      ? 'Soda and non-soda taxes handled for you.'
-                      : 'Tap an item to add it to the order.'}
-                </p>
-              </div>
-              <span className="count-label">
-                {String(products.length).padStart(2, '0')} OPTIONS
-              </span>
+              <h1 id="category-title">{category}</h1>
             </div>
-            <div className={`product-grid ${products.length <= 3 ? 'few' : ''}`}>
-              {products.map((p, i) => (
+            <div className="product-grid">
+              {products.map((p) => (
                 <button className="product-card" key={p.id} onClick={() => selectProduct(p)}>
-                  <ProductArt category={p.category} />
-                  <div className="product-copy">
-                    <span className="product-kicker">
-                      {p.lto
-                        ? 'LIMITED TIME'
-                        : p.customizable
-                          ? 'BUILD YOUR OWN'
-                          : category.toUpperCase()}
-                      <span className="product-number">{String(i + 1).padStart(2, '0')}</span>
-                    </span>
-                    <h3>{p.name}</h3>
-                    {p.description && <p>{p.description}</p>}
-                    <div className="product-price">
-                      {p.price.cents === null ? (
-                        <span className="unknown-label">Set store price</span>
-                      ) : (
-                        <strong>
-                          {money(p.price.cents)}
-                          {p.customizable && <small> base</small>}
-                        </strong>
-                      )}
-                      <span className="add-circle">
-                        <Plus size={19} />
-                      </span>
-                    </div>
-                  </div>
+                  <h2>{p.name}</h2>
+                  <strong>{p.price.cents === null ? '—' : money(p.price.cents)}</strong>
                 </button>
               ))}
             </div>
@@ -659,25 +481,12 @@ export default function App() {
               <div className="empty">
                 <ShoppingBag size={30} />
                 <h3>No items here yet</h3>
-                <p>Add or enable products in Settings.</p>
                 <button className="button secondary" onClick={() => setScreen('settings')}>
                   Edit menu
                 </button>
               </div>
             )}
           </section>
-          <div className="menu-footer">
-            <span>
-              <Check size={16} />
-              Cash only. Everything on this phone.
-            </span>
-            <button className="text-button" onClick={() => setScreen('settings')}>
-              {config.products.some((p) => p.enabled && !p.price.verified)
-                ? 'Verify store prices'
-                : 'Edit menu prices'}
-              <ChevronRight size={15} />
-            </button>
-          </div>
         </main>
         <div className="cart-dock">
           <div className="cart-dock-inner">
@@ -723,19 +532,13 @@ export default function App() {
             onClose={() => setSelection(null)}
           >
             <div className="sheet-content builder">
-              <div className="builder-summary">
-                <ProductArt category={selectedProduct.category} />
-                <div>
-                  <span className="eyebrow">{selectedProduct.category}</span>
-                  <h3>{selectedProduct.name}</h3>
-                  <strong className="builder-price" aria-live="polite">
-                    {configuredPrice === null ? 'Set price to continue' : money(configuredPrice)}
-                  </strong>
-                  <span className="muted">
-                    Before tax{selectedProduct.deposit.cents ? ' & deposit' : ''}
-                  </span>
-                </div>
-              </div>
+              <strong className="builder-price" aria-live="polite">
+                {configuredPrice === null
+                  ? selectedProduct.price.cents === null
+                    ? '—'
+                    : money(selectedProduct.price.cents)
+                  : money(configuredPrice)}
+              </strong>
               {selectedProduct.price.cents === null &&
                 (!selection.proteinId ||
                   getProteinPrice(selectedProduct, selection.proteinId, config).mode !==
@@ -749,13 +552,15 @@ export default function App() {
               {selectedProduct.customizable && (
                 <>
                   <div className="step-heading">
-                    <span>1</span>
-                    <h4>Choose protein</h4>
-                    <small>Required</small>
+                    <h3>Choose protein</h3>
                   </div>
                   <div className="protein-grid">
                     {config.proteins
-                      .filter((p) => p.enabled || p.id === selection.proteinId)
+                      .filter(
+                        (p) =>
+                          (p.enabled && !selectedProduct.excludedProteinIds.includes(p.id)) ||
+                          p.id === selection.proteinId,
+                      )
                       .map((p) => {
                         const pricing = getProteinPrice(selectedProduct, p.id, config)
                         return (
@@ -766,17 +571,19 @@ export default function App() {
                             onClick={() => setSelection({ ...selection, proteinId: p.id })}
                           >
                             <strong>{p.name}</strong>
-                            <span>
-                              {pricing.price.cents === null
-                                ? pricing.mode === 'total'
-                                  ? 'Set full price'
-                                  : 'Set upcharge'
-                                : pricing.mode === 'total'
-                                  ? `${money(pricing.price.cents)} full price`
-                                  : pricing.price.cents === 0
-                                    ? 'Included'
-                                    : `+${money(pricing.price.cents)}`}
-                            </span>
+                            {(pricing.price.cents !== 0 || pricing.mode === 'total') && (
+                              <span>
+                                {pricing.price.cents === null
+                                  ? pricing.mode === 'total'
+                                    ? 'Set full price'
+                                    : 'Set upcharge'
+                                  : pricing.mode === 'total'
+                                    ? `${money(pricing.price.cents)} full price`
+                                    : pricing.price.cents === 0
+                                      ? ''
+                                      : `+${money(pricing.price.cents)}`}
+                              </span>
+                            )}
                             {selection.proteinId === p.id && <Check size={16} />}
                           </button>
                         )
@@ -792,13 +599,15 @@ export default function App() {
                       />
                     )}
                   <div className="step-heading">
-                    <span>2</span>
-                    <h4>Paid extras</h4>
-                    <small>Optional</small>
+                    <h3>Extras</h3>
                   </div>
                   <div className="extras-grid">
                     {config.extras
-                      .filter((e) => e.enabled)
+                      .filter(
+                        (e) =>
+                          (e.enabled && !selectedProduct.excludedExtraIds.includes(e.id)) ||
+                          selection.extraIds.includes(e.id),
+                      )
                       .map((extra) => {
                         const pricing = getExtraPrice(selectedProduct, extra.id, config),
                           checked = selection.extraIds.includes(extra.id)
@@ -821,7 +630,11 @@ export default function App() {
                             </span>
                             <strong>{extra.name}</strong>
                             <span>
-                              {pricing.cents === null ? 'Set price' : `+${money(pricing.cents)}`}
+                              {pricing.cents === null
+                                ? 'Set price'
+                                : pricing.cents === 0
+                                  ? ''
+                                  : `+${money(pricing.cents)}`}
                             </span>
                           </button>
                         )
@@ -846,12 +659,6 @@ export default function App() {
                   onSave={(p) => setProductPrice(p, 'deposit')}
                 />
               )}
-              {!selectedProduct.price.verified && selectedProduct.price.cents !== null && (
-                <p className="seed-note">
-                  Base price is an online seed. Verify against the store register in Settings.
-                </p>
-              )}
-              <p className="builder-hint">Only choices that affect the bill. No toppings needed.</p>
             </div>
             <footer className="sheet-footer">
               <button
@@ -868,7 +675,7 @@ export default function App() {
               >
                 <span>{selection.editingId ? 'Update item' : 'Add to order'}</span>
                 <span>
-                  {configuredPrice === null ? 'Set required prices' : money(configuredPrice)}
+                  {configuredPrice === null ? '—' : money(configuredPrice)}
                   <Plus size={20} />
                 </span>
               </button>
@@ -906,7 +713,6 @@ export default function App() {
                   )}
                   <div className="tender-heading">
                     <h3>Cash received</h3>
-                    <span>Choose the total handed to you</span>
                   </div>
                   <div className="tender-grid">
                     {[500, 1000, 2000, 5000, 10000].map((amount) => (
@@ -934,7 +740,6 @@ export default function App() {
                     <div className="remaining" role="alert">
                       <span>Received {money(tendered)}</span>
                       <strong>Still owed {money(totals.cash - tendered)}</strong>
-                      <span>Choose the full amount once more cash is received.</span>
                     </div>
                   )}
                   <button className="text-button full" onClick={() => setScreen('menu')}>
@@ -979,7 +784,6 @@ export default function App() {
                   />
                 </div>
               </label>
-              <p className="muted">Cash amounts use 5¢ increments.</p>
               <button className="button primary full" disabled={parseMoney(otherText) === null}>
                 Calculate change
                 <ArrowRight size={20} />
@@ -988,7 +792,7 @@ export default function App() {
           </Sheet>
         )}
         {screen === 'change' && tendered !== null && (
-          <Sheet title="Give back change" onClose={() => setScreen('cart')}>
+          <Sheet title="Change" onClose={() => setScreen('cart')}>
             <div className="sheet-content change-content">
               <div className="change-amount">
                 <span className="eyebrow">CHANGE</span>
@@ -1016,7 +820,7 @@ export default function App() {
                           <span className="coin-symbol" />
                         )}
                       </span>
-                      <strong>{d.label}</strong>
+                      <strong>{d.label.replace(/ (bill|coin)$/, '')}</strong>
                       <span className="denom-count">
                         × <b>{d.count}</b>
                       </span>
@@ -1026,7 +830,7 @@ export default function App() {
               ) : (
                 <div className="exact-cash">
                   <Check size={32} />
-                  <strong>Exact cash. You’re all set.</strong>
+                  <strong>Exact cash</strong>
                 </div>
               )}
             </div>
@@ -1053,7 +857,6 @@ export default function App() {
         {screen === 'history' && (
           <Sheet title="Recent orders" onClose={() => setScreen('menu')}>
             <div className="sheet-content">
-              <p className="muted history-note">Last 20 completed orders. Only on this phone.</p>
               {history.length ? (
                 <div className="history-list">
                   {history.map((order) => (
@@ -1088,8 +891,7 @@ export default function App() {
               ) : (
                 <div className="empty">
                   <Clock3 size={32} />
-                  <h3>A fresh start</h3>
-                  <p>Completed orders will appear here.</p>
+                  <h3>No completed orders</h3>
                 </div>
               )}
             </div>

@@ -9,7 +9,7 @@ import {
   roundTax,
 } from './money'
 import { freshDefaults } from './menu'
-import { type Line, verified } from './model'
+import { type Line, unknown, verified } from './model'
 
 const taxes = { gstBasisPoints: 500, pstBasisPoints: 700 }
 const line = (
@@ -177,6 +177,7 @@ describe('flexible item pricing', () => {
   it('never assumes an unknown protein is included', () => {
     const c = freshDefaults(),
       p = c.products.find((p) => p.id === 'regular-burrito')!
+    c.proteins.find((p) => p.id === 'grilled-chicken')!.price = unknown()
     expect(itemPrice(p, 'grilled-chicken', [], c)).toBeNull()
     expect(itemPrice(p, undefined, [], c)).toBeNull()
   })
@@ -187,6 +188,7 @@ describe('flexible item pricing', () => {
     c.proteins.find((p) => p.id === 'beef-barbacoa')!.price = verified(275)
     c.proteins.find((p) => p.id === 'steak')!.price = verified(325)
     c.extras[0].price = verified(150)
+    c.extras[1].price = unknown()
     expect(itemPrice(p, 'grilled-chicken', [], c)).toBe(1545)
     expect(itemPrice(p, 'beef-barbacoa', [], c)).toBe(1820)
     expect(itemPrice(p, 'steak', [c.extras[0].id], c)).toBe(2020)
@@ -214,6 +216,7 @@ describe('flexible item pricing', () => {
     const c = freshDefaults(),
       p = c.products.find((p) => p.id === 'canned-pepsi')!
     p.price = verified(250)
+    p.deposit = unknown()
     expect(itemPrice(p, undefined, [], c)).toBeNull()
     p.deposit = verified(0)
     expect(itemPrice(p, undefined, [], c)).toBe(250)

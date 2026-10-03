@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { X, Check, AlertCircle } from 'lucide-react'
+import { X } from 'lucide-react'
 import { type Price, verified } from './model'
 import { money, parseMoney } from './money'
 import { ToastContext } from './context'
@@ -59,20 +59,6 @@ export function Sheet({
     </dialog>
   )
 }
-export function PriceStatus({ price }: { price: Price }) {
-  return (
-    <span className={`price-status ${price.verified ? 'verified' : 'unverified'}`}>
-      {price.verified ? <Check size={13} /> : <AlertCircle size={13} />}
-      {price.cents === null
-        ? 'Unknown · set price'
-        : price.verified
-          ? 'Store verified'
-          : price.source === 'online'
-            ? 'Unverified online seed'
-            : 'Unverified · check register'}
-    </span>
-  )
-}
 export function PriceEditor({
   label,
   value,
@@ -93,7 +79,7 @@ export function PriceEditor({
           <input
             inputMode="decimal"
             value={text}
-            placeholder="Unknown"
+            placeholder="—"
             aria-label={label}
             onChange={(e) => {
               setText(e.target.value)
@@ -109,7 +95,7 @@ export function PriceEditor({
                     ? { cents: null, verified: false, source: 'unknown' }
                     : next === value.cents
                       ? value
-                      : { cents: next, verified: false, source: 'store' },
+                      : verified(next),
                 )
             }}
           />
@@ -120,22 +106,6 @@ export function PriceEditor({
           Enter a valid price, up to $10,000.
         </p>
       )}
-      <label className="check-label">
-        <input
-          type="checkbox"
-          checked={value.verified}
-          disabled={value.cents === null}
-          onChange={(e) =>
-            onChange({
-              ...value,
-              verified: e.target.checked,
-              source: e.target.checked ? 'store' : value.source,
-            })
-          }
-        />
-        Verified against store register
-      </label>
-      <PriceStatus price={value} />
     </div>
   )
 }
@@ -160,11 +130,6 @@ export function ResolvePrice({
     >
       <label>
         <strong>{label}</strong>
-        <span className="muted">
-          {deposit
-            ? 'Enter the refundable deposit, or confirm none.'
-            : 'Enter the store price once. Saved on this phone.'}
-        </span>
         <div className="resolve-row">
           <div className="money-input">
             <span>$</span>
@@ -183,12 +148,12 @@ export function ResolvePrice({
       </label>
       {deposit && (
         <button type="button" className="text-button" onClick={() => onSave(verified(0))}>
-          No deposit · $0
+          No deposit
         </button>
       )}
       {!deposit && /upcharge|extra/i.test(label) && (
         <button type="button" className="text-button" onClick={() => onSave(verified(0))}>
-          Confirm included · $0
+          Included
         </button>
       )}
     </form>

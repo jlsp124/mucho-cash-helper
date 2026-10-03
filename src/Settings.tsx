@@ -13,9 +13,9 @@ import {
 import { freshDefaults } from './menu'
 import { importConfig, serializeConfig } from './storage'
 import { money, parseMoney } from './money'
-import { PriceEditor, PriceStatus, Sheet } from './ui'
+import { PriceEditor, Sheet } from './ui'
 
-type Tab = 'Products' | 'Proteins' | 'Extras' | 'Transfer' | 'About'
+type Tab = 'Products' | 'Proteins' | 'Extras' | 'Transfer' | 'Tax & App'
 export function Settings({
   config,
   onChange,
@@ -57,9 +57,7 @@ export function Settings({
       setConfirm('import')
       setError('')
     } catch {
-      setError(
-        'Invalid configuration. Use an exported v1 menu JSON with valid prices and unique IDs. Nothing was changed.',
-      )
+      setError('Invalid configuration. Check prices and unique IDs.')
     }
   }
   function saveProduct() {
@@ -76,26 +74,14 @@ export function Settings({
     }
     saveConfig(next)
     setEditing(null)
-    notify('Product saved on this phone')
+    notify('Product saved')
   }
   function updateProduct(p: Partial<Product>) {
     setEditing((previous) => (previous ? { ...previous, ...p } : null))
   }
-  const unknownCount = [
-    ...config.products
-      .filter((p) => p.enabled)
-      .flatMap((p) => [
-        p.price,
-        p.deposit,
-        ...Object.values(p.proteinOverrides).map((o) => o.price),
-        ...Object.values(p.extraOverrides),
-      ]),
-    ...config.proteins.filter((p) => p.enabled).map((p) => p.price),
-    ...config.extras.filter((p) => p.enabled).map((p) => p.price),
-  ].filter((p) => !p.verified).length
   return (
     <Sheet
-      title={editing ? 'Edit product' : modifier ? 'Edit modifier' : 'Settings'}
+      title={editing ? 'Edit product' : modifier ? 'Edit modifier' : 'Menu & Prices'}
       onClose={onClose}
       wide
     >
@@ -110,19 +96,13 @@ export function Settings({
             }}
           >
             <ArrowLeft size={18} />
-            Menu & pricing
+            Menu & Prices
           </button>
         )}
         {!editing && !modifier && (
           <>
-            <div className="settings-intro">
-              <span className="eyebrow">YOUR STORE. YOUR PRICES.</span>
-              <h3>Menu & pricing</h3>
-              <p>Online seeds need a store check. Unknown values are never treated as free.</p>
-              <span className="verification-note">{unknownCount} entries need verification</span>
-            </div>
             <div className="settings-tabs" role="tablist" aria-label="Settings sections">
-              {(['Products', 'Proteins', 'Extras', 'Transfer', 'About'] as Tab[]).map((t) => (
+              {(['Products', 'Proteins', 'Extras', 'Transfer', 'Tax & App'] as Tab[]).map((t) => (
                 <button
                   role="tab"
                   aria-selected={tab === t}
@@ -228,27 +208,54 @@ export function Settings({
             {editing.customizable && (
               <details className="advanced">
                 <summary>Protein prices for this product / size</summary>
-                <p className="muted">
-                  Global upcharges are used unless overridden. “Full price” replaces the base plus
-                  protein.
-                </p>
                 {config.proteins.map((p) => {
                   const override = editing.proteinOverrides[p.id]
                   return (
                     <div className="override" key={p.id}>
-                      <label className="field">
+                      <label className="check-label">
+                        <input
+                          type="checkbox"
+                          checked={!editing.excludedProteinIds.includes(p.id)}
+                          onChange={(e) =>
+                            updateProduct({
+                              excludedProteinIds: e.target.checked
+                                ? editing.excludedProteinIds.filter((id) => id !== p.id)
+                                : [...editing.excludedProteinIds, p.id],
+                            })
+                          }
+                        />
                         {p.name}
+                      </label>
+                      <label className="field">
+                        Price mode
                         <select
                           aria-label={`${p.name} pricing mode`}
                           value={override?.mode ?? 'inherit'}
                           onChange={(e) => {
                             const proteinOverrides = { ...editing.proteinOverrides }
                             if (e.target.value === 'inherit') delete proteinOverrides[p.id]
-                            else
+                            else {
+                              const amount = (override?.price ?? p.price).cents
+                              const base = editing.price.cents
+                              const total =
+                                override?.mode === 'total'
+                                  ? amount
+                                  : base !== null && amount !== null
+                                    ? base + amount
+                                    : null
+                              const nextAmount =
+                                e.target.value === 'total'
+                                  ? total
+                                  : override?.mode === 'total'
+                                    ? total !== null && base !== null && total >= base
+                                      ? total - base
+                                      : null
+                                    : amount
                               proteinOverrides[p.id] = {
                                 mode: e.target.value as 'adjustment' | 'total',
-                                price: unknown(),
+                                price: nextAmount === null ? unknown() : verified(nextAmount),
                               }
+                            }
                             updateProduct({ proteinOverrides })
                           }}
                         >
@@ -287,10 +294,25 @@ export function Settings({
                       <label className="check-label">
                         <input
                           type="checkbox"
+                          checked={!editing.excludedExtraIds.includes(extra.id)}
+                          onChange={(e) =>
+                            updateProduct({
+                              excludedExtraIds: e.target.checked
+                                ? editing.excludedExtraIds.filter((id) => id !== extra.id)
+                                : [...editing.excludedExtraIds, extra.id],
+                            })
+                          }
+                        />
+                        {extra.name}
+                      </label>
+                      <label className="check-label">
+                        <input
+                          type="checkbox"
                           checked={!!override}
                           onChange={(e) => {
                             const extraOverrides = { ...editing.extraOverrides }
-                            if (e.target.checked) extraOverrides[extra.id] = unknown()
+                            if (e.target.checked)
+                              extraOverrides[extra.id] = structuredClone(extra.price)
                             else delete extraOverrides[extra.id]
                             updateProduct({ extraOverrides })
                           }}
@@ -351,9 +373,6 @@ export function Settings({
               value={modifier.price}
               onChange={(price) => setModifier({ ...modifier, price })}
             />
-            <p className="muted">
-              Enter 0 only if included at the store. Product-specific overrides take priority.
-            </p>
             <label className="check-label">
               <input
                 type="checkbox"
@@ -378,35 +397,45 @@ export function Settings({
                   />
                 </label>
                 <div className="editor-list">
-                  {(tab === 'Products'
-                    ? config.products
-                    : tab === 'Proteins'
-                      ? config.proteins
-                      : config.extras
-                  )
-                    .filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
-                    .map((p) => (
-                      <button
-                        className="editor-row"
-                        key={p.id}
-                        onClick={() => {
-                          setError('')
-                          if (tab === 'Products') setEditing(structuredClone(p as Product))
-                          else setModifier(structuredClone(p))
-                        }}
-                      >
-                        <div>
-                          <strong>{p.name}</strong>
-                          <PriceStatus price={p.price} />
-                          {!p.enabled && <span className="muted">Disabled</span>}
-                          {'lto' in p && Boolean(p.lto) && <span className="tag">LTO</span>}
-                        </div>
-                        <span className="editor-price">
-                          {p.price.cents === null ? 'Set price' : money(p.price.cents)}
-                          <ChevronRight size={17} />
-                        </span>
-                      </button>
-                    ))}
+                  {(tab === 'Products' ? categories : [tab]).map((group) => (
+                    <section key={group}>
+                      {tab === 'Products' && <h3 className="editor-group">{group}</h3>}
+                      {(tab === 'Products'
+                        ? config.products.filter((p) => p.category === group)
+                        : tab === 'Proteins'
+                          ? config.proteins
+                          : config.extras
+                      )
+                        .filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
+                        .map((p) => (
+                          <button
+                            className="editor-row"
+                            key={p.id}
+                            onClick={() => {
+                              setError('')
+                              if (tab === 'Products') setEditing(structuredClone(p as Product))
+                              else setModifier(structuredClone(p))
+                            }}
+                          >
+                            <div>
+                              <strong>{p.name}</strong>
+                              {!p.enabled && <span className="muted">Disabled</span>}
+                              {'lto' in p && Boolean(p.lto) && <span className="tag">LTO</span>}
+                            </div>
+                            <span className="editor-price">
+                              {p.price.cents === null
+                                ? '—'
+                                : tab === 'Products'
+                                  ? money(p.price.cents)
+                                  : p.price.cents === 0
+                                    ? 'Included'
+                                    : `+${money(p.price.cents)}`}
+                              <ChevronRight size={17} />
+                            </span>
+                          </button>
+                        ))}
+                    </section>
+                  ))}
                 </div>
                 <button
                   className="button secondary full"
@@ -427,6 +456,8 @@ export function Settings({
                         description: '',
                         proteinOverrides: {},
                         extraOverrides: {},
+                        excludedProteinIds: [],
+                        excludedExtraIds: [],
                       })
                     else setModifier({ id, name: '', price: unknown(), enabled: true })
                   }}
@@ -443,11 +474,6 @@ export function Settings({
             )}
             {tab === 'Transfer' && (
               <div className="transfer">
-                <h3>Same setup, another phone.</h3>
-                <p>
-                  Transfer the menu, modifiers, deposits and tax settings. Orders and history stay
-                  on this device.
-                </p>
                 <button
                   className="button secondary full"
                   onClick={() => {
@@ -538,32 +564,8 @@ export function Settings({
                 </div>
               </div>
             )}
-            {tab === 'About' && (
+            {tab === 'Tax & App' && (
               <div className="about">
-                <span className="brand-mark">
-                  m<span>+</span>
-                </span>
-                <h3>Mucho Cash Helper</h3>
-                <p>
-                  Unofficial internal cash-calculation helper for Prince George, BC. Not an official
-                  Mucho Burrito POS.
-                </p>
-                <p>
-                  No accounts, customer data, card payments or cash-drawer connection. Menu, active
-                  order and the last 20 receipts stay on this phone.
-                </p>
-                <h4>Before relying on these prices</h4>
-                <p>
-                  Public online menu prices are initial seeds only. Compare them with the actual
-                  store register. Unlisted prices, protein upcharges, extras and bottle deposits
-                  must be entered explicitly.
-                </p>
-                <h4>Cash & tax</h4>
-                <p>
-                  Food and non-soda drinks: 5% GST. Soda: 5% GST + 7% PST. Refundable deposits are
-                  separate and untaxed. Taxes round to cents on each order’s taxable bases; only the
-                  final payable amount rounds to the nearest nickel.
-                </p>
                 <details className="advanced">
                   <summary>Tax rate configuration</summary>
                   <form
@@ -598,13 +600,7 @@ export function Settings({
                     <button className="button secondary full">Save tax rates</button>
                   </form>
                 </details>
-                <h4>Install & use offline</h4>
-                <p>
-                  iPhone: Safari → Share → Add to Home Screen. Android: browser menu → Install app.
-                  Wait for “Offline ready” after the first load. An update appears when a new
-                  version is ready; finish the current order before updating.
-                </p>
-                <small>Version 1.0 · Prices stored in Canadian cents.</small>
+                <small>Mucho Cash Helper · 1.1 · CAD</small>
               </div>
             )}
           </>
@@ -624,7 +620,7 @@ export function Settings({
           <div className="sheet-content">
             <p>
               {confirm === 'import'
-                ? `Replace the current setup with ${pendingImport?.products.length} products from this file? Your active order and history are preserved.`
+                ? `Replace the menu with ${pendingImport?.products.length} products? Order and history are preserved.`
                 : confirm === 'reset'
                   ? 'This removes your price corrections and custom menu entries. Export a backup first. Your active order and history are preserved.'
                   : 'Remove all completed receipts from this phone? This cannot be undone.'}
@@ -646,7 +642,7 @@ export function Settings({
                   : 'Clear history'}
             </button>
             <button className="button secondary full" onClick={() => setConfirm(null)}>
-              Keep current setup
+              Keep current menu
             </button>
           </div>
         </Sheet>
