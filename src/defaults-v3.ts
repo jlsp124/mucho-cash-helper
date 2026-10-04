@@ -1,12 +1,13 @@
+// Frozen v3 from main 84f2d26. Keep the accidental disables as migration evidence.
 import { configSchema, verified, type Config, type Product } from './model'
 import { defaultsV2 } from './defaults-v2'
 
 // Physical PG boards supplied 2026-10-03; handwritten kids/guac reference.
 // Unsupplied prices retain v2 fallback values. See docs/pricing-seeds.md.
-export const DEFAULTS_VERSION = 4
-export const defaults = structuredClone(defaultsV2)
-defaults.defaultsVersion = DEFAULTS_VERSION
-const find = (id: string) => defaults.products.find((p) => p.id === id)!
+export const DEFAULTS_V3_VERSION = 3
+export const defaultsV3 = structuredClone(defaultsV2)
+defaultsV3.defaultsVersion = DEFAULTS_V3_VERSION
+const find = (id: string) => defaultsV3.products.find((p) => p.id === id)!
 const prices: Record<string, number> = {
   'small-burrito': 1075,
   'regular-burrito': 1245,
@@ -53,7 +54,7 @@ const add = (
   template: Product,
   patch: Partial<Product> = {},
 ) => {
-  defaults.products.push({
+  defaultsV3.products.push({
     ...structuredClone(template),
     id,
     name,
@@ -62,7 +63,7 @@ const add = (
   })
 }
 add('veggie-quesadilla', 'Veggie Quesadilla', 1095, find('quesadilla'), {
-  excludedProteinIds: defaults.proteins.filter((p) => p.id !== 'veggies').map((p) => p.id),
+  excludedProteinIds: defaultsV3.proteins.filter((p) => p.id !== 'veggies').map((p) => p.id),
 })
 add('bowl-double-protein', 'Bowl · 2× Protein', 1675, find('bowl'), {
   includedExtraIds: ['extra-protein'],
@@ -81,14 +82,17 @@ for (const id of ['queso-fries-regular', 'queso-fries-mucho', 'loaded-nachos']) 
   p.customizable = true
   p.proteinOptional = true
   p.excludedProteinIds = ['veggies']
-  p.excludedExtraIds = defaults.extras.map((e) => e.id)
+  p.excludedExtraIds = defaultsV3.extras.map((e) => e.id)
   p.proteinOverrides = Object.fromEntries(
-    defaults.proteins.map((protein) => [protein.id, { mode: 'adjustment', price: verified(200) }]),
+    defaultsV3.proteins.map((protein) => [
+      protein.id,
+      { mode: 'adjustment', price: verified(200) },
+    ]),
   )
 }
-for (const p of defaults.products.filter((p) => p.id.startsWith('honey-chili-'))) {
+for (const p of defaultsV3.products.filter((p) => p.id.startsWith('honey-chili-'))) {
   p.customizable = true
-  p.excludedProteinIds = defaults.proteins
+  p.excludedProteinIds = defaultsV3.proteins
     .filter((protein) => !['grilled-chicken', 'crispy-chicken'].includes(protein.id))
     .map((protein) => protein.id)
 }
@@ -100,7 +104,7 @@ add('honey-chili-mucho', 'Honey Chili Chicken · MUCHO', 1675, find('honey-chili
 })
 add('kids-meal', 'Kids Meal', 695, find('chips-salsa'), { category: 'More' })
 // Stable IDs preserve deliberate edits/deposits on installed devices.
-for (const p of defaults.products.filter((p) => p.category === 'Drinks')) p.enabled = false
+for (const p of defaultsV3.products.filter((p) => p.category === 'Drinks')) p.enabled = false
 for (const [id, name, cents, taxClass] of [
   ['canned-pepsi', 'Pop Can', 225, 'SODA'],
   ['bottled-water', 'Water Bottle', 295, 'NON_SODA_DRINK'],
@@ -110,19 +114,24 @@ for (const [id, name, cents, taxClass] of [
   ['jarritos', 'Jarritos', 375, 'SODA'],
 ] as const)
   Object.assign(find(id), { name, price: verified(cents), taxClass, enabled: true })
-// Keep existing non-drink products when no newer physical price was supplied.
-find('zesty-fries-mucho').name = 'Zesty Fresca Fries · MUCHO'
-find('mucho-churros').name = 'MUCHO Churro Fries'
-find('mucho-cookies').name = 'MUCHO Cookies'
-for (const p of defaults.proteins) {
+for (const id of [
+  'zesty-fries-regular',
+  'zesty-fries-mucho',
+  'mucho-churros',
+  'mucho-cookies',
+  'signature-burrito',
+  'signature-bowl',
+])
+  find(id).enabled = false
+for (const p of defaultsV3.proteins) {
   p.price = verified(['steak', 'beef-barbacoa', 'shiitake-carnitas'].includes(p.id) ? 200 : 0)
   if (p.id === 'veggies') {
     p.name = 'Fajita Veggies'
     p.includedExtraIds = ['guacamole']
   }
 }
-defaults.extras.find((e) => e.id === 'guacamole')!.price = verified(250)
-defaults.extras.find((e) => e.id === 'extra-protein')!.price = verified(300)
+defaultsV3.extras.find((e) => e.id === 'guacamole')!.price = verified(250)
+defaultsV3.extras.find((e) => e.id === 'extra-protein')!.price = verified(300)
 // Can price is included; configurable soda allocation/deposit are counted once.
 for (const [id, name, cents] of [
   ['combo-salsa', 'Chips & Salsa', 445],
@@ -130,7 +139,7 @@ for (const [id, name, cents] of [
   ['combo-fries', 'Mercado Fries', 595],
   ['combo-churros', 'Churro Fries', 495],
 ] as const)
-  defaults.extras.push({
+  defaultsV3.extras.push({
     id,
     name,
     price: verified(cents),
@@ -138,6 +147,6 @@ for (const [id, name, cents] of [
     includedExtraIds: [],
     bundle: { sodaCents: 225, deposit: verified(10) },
   })
-for (const p of defaults.products.filter((p) => p.category === 'Sides'))
-  p.excludedExtraIds.push(...defaults.extras.filter((e) => e.bundle).map((e) => e.id))
-export const freshDefaults = (): Config => configSchema.parse(structuredClone(defaults))
+for (const p of defaultsV3.products.filter((p) => p.category === 'Sides'))
+  p.excludedExtraIds.push(...defaultsV3.extras.filter((e) => e.bundle).map((e) => e.id))
+export const freshDefaultsV3 = (): Config => configSchema.parse(structuredClone(defaultsV3))

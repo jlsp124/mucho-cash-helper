@@ -163,7 +163,7 @@ test('deployed v1 localStorage upgrades without losing custom prices or history'
   await page.getByRole('button', { name: 'DONE / NEXT ORDER' }).click()
   await page.reload()
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('mucho-cash-helper:v1')!))
-  expect(saved.config.defaultsVersion).toBe(3)
+  expect(saved.config.defaultsVersion).toBe(4)
   expect(saved.history).toHaveLength(1)
   expect(
     saved.config.products.find((p: { id: string }) => p.id === 'small-burrito').price.cents,

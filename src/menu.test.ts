@@ -2,6 +2,48 @@ import { expect, it } from 'vitest'
 import { freshDefaults } from './menu'
 import { calculateTotals, itemPrice, priceLine } from './money'
 import { verified } from './model'
+import { defaultsV2 } from './defaults-v2'
+import { defaultsV3 } from './defaults-v3'
+
+const restored = [
+  ['zesty-fries-regular', 'Zesty Fresca Fries · Regular', 720],
+  ['zesty-fries-mucho', 'Zesty Fresca Fries · MUCHO', 1020],
+  ['mucho-churros', 'MUCHO Churro Fries', 1495],
+  ['mucho-cookies', 'MUCHO Cookies', 1295],
+  ['signature-burrito', 'Mucho’s Way Burrito', 1345],
+  ['signature-bowl', 'Mucho’s Way Bowl', 1675],
+] as const
+it.each(restored)('%s restores its enabled fallback product and price', (id, name, cents) => {
+  expect(freshDefaults().products.find((p) => p.id === id)).toMatchObject({
+    name,
+    enabled: true,
+    price: { cents },
+  })
+})
+it('the v2/v3 non-drink audit finds exactly the six restored products', () => {
+  const hidden = defaultsV2.products.filter(
+    (p) =>
+      p.enabled &&
+      p.category !== 'Drinks' &&
+      !defaultsV3.products.find((q) => q.id === p.id)?.enabled,
+  )
+  expect(hidden.map((p) => p.id).sort()).toEqual(restored.map(([id]) => id).sort())
+  const current = freshDefaults()
+  for (const p of defaultsV2.products.filter((p) => p.category !== 'Drinks'))
+    expect(current.products.find((q) => q.id === p.id)?.enabled, p.id).toBe(p.enabled)
+})
+it('restoration changes no physical monetary/tax/modifier defaults from v3', () => {
+  const c = freshDefaults()
+  for (const p of defaultsV3.products) {
+    const after = c.products.find((q) => q.id === p.id)!
+    const { enabled: _enabled, name: _name, ...beforeMoney } = p
+    const { enabled: _afterEnabled, name: _afterName, ...afterMoney } = after
+    expect(afterMoney, p.id).toEqual(beforeMoney)
+  }
+  expect(c.proteins).toEqual(defaultsV3.proteins)
+  expect(c.extras).toEqual(defaultsV3.extras)
+  expect(c.taxes).toEqual(defaultsV3.taxes)
+})
 
 it.each([
   ['small-burrito', 'grilled-chicken', [], 1075],

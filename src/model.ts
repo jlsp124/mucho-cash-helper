@@ -50,7 +50,7 @@ export const configSchema = z
   .object({
     version: z.literal(1),
     // Default data has its own revision; v1 exports remain readable.
-    defaultsVersion: z.number().int().min(1).max(3).default(1),
+    defaultsVersion: z.number().int().min(1).max(4).default(1),
     products: z.array(productSchema).max(500),
     proteins: z.array(modifierSchema).max(50),
     extras: z.array(modifierSchema).max(50),

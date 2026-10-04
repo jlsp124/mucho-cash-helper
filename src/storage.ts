@@ -10,12 +10,18 @@ import {
 import { DEFAULTS_VERSION, freshDefaults } from './menu'
 import { legacyDefaults } from './legacy-defaults'
 import { defaultsV2 } from './defaults-v2'
+import { defaultsV3 } from './defaults-v3'
 import { priceLine } from './money'
 
 export function migrateConfig(config: Config): Config {
   if (config.defaultsVersion >= DEFAULTS_VERSION) return config
   const next = freshDefaults()
-  const baseline = config.defaultsVersion === 1 ? legacyDefaults : defaultsV2
+  const baseline =
+    config.defaultsVersion === 1
+      ? legacyDefaults
+      : config.defaultsVersion === 2
+        ? defaultsV2
+        : defaultsV3
   const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
   // Compare each field with the appropriate frozen baseline. Untouched fields get
   // current data; explicit prices (including store zero), flags, overrides and
@@ -45,6 +51,17 @@ export function migrateConfig(config: Config): Config {
           }
           fields[field] = merged
         } else if (equal(value, before)) {
+          // V3 shipped these items disabled. Restore only untouched records:
+          // edits to the product are evidence its availability may be deliberate.
+          // V3 had no flag distinguishing a manual false from the shipped false.
+          if (
+            field === 'enabled' &&
+            config.defaultsVersion === 3 &&
+            !old.enabled &&
+            current.enabled &&
+            !equal(saved, old)
+          )
+            continue
           // Do not hide a formerly unpriced item the user intentionally priced.
           if (
             field === 'enabled' &&
@@ -84,6 +101,8 @@ export type SavedState = { version: 1; config: Config; history: CompletedOrder[]
 function upgradeState(state: SavedState): SavedState {
   const config = migrateConfig(state.config)
   if (config === state.config) return state
+  // V4 changes availability only; preserve existing v3 cart snapshots verbatim.
+  if (state.config.defaultsVersion >= 3) return { ...state, config }
   // Refresh only active lines that still match the saved menu. Historical paid
   // receipts and manually altered snapshots retain their original amounts.
   const cart = state.cart.map((line) => {

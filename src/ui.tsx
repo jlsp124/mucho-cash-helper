@@ -4,6 +4,21 @@ import { type Price, type Totals, type CompletedOrder, verified } from './model'
 import { money, parseMoney } from './money'
 import { ToastContext } from './context'
 
+// Multiple native dialogs can coexist (cart + custom cash or confirmation).
+// Restore the original overflow only when the last sheet releases its lock,
+// regardless of parent/child unmount order.
+let openSheets = 0
+let originalBodyOverflow = ''
+function lockBodyScroll() {
+  if (openSheets++ === 0) {
+    originalBodyOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+  }
+  return () => {
+    if (--openSheets === 0) document.body.style.overflow = originalBodyOverflow
+  }
+}
+
 export function Sheet({
   title,
   children,
@@ -25,11 +40,10 @@ export function Sheet({
     const dialog = ref.current!
     const previous = document.activeElement as HTMLElement | null
     dialog.showModal()
-    const old = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const unlock = lockBodyScroll()
     return () => {
       dialog.close()
-      document.body.style.overflow = old
+      unlock()
       previous?.focus()
     }
   }, [])

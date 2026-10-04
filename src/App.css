@@ -196,13 +196,6 @@ a {
   border-radius: 14px;
   background: var(--surface);
 }
-.location-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 22px;
-}
-
 .category-nav {
   position: sticky;
   top: 0;
@@ -1244,9 +1237,6 @@ a {
     border: 0;
     width: 48px;
   }
-  .location-line {
-    margin-top: 18px;
-  }
   .category-nav {
     margin: 0 -20px;
     padding: 12px 20px;
@@ -1570,9 +1560,6 @@ a {
 .brand-sub {
   font-size: 8px;
   margin-top: 4px;
-}
-.location-line {
-  margin: 8px 0;
 }
 .category-nav {
   padding: 6px 0;

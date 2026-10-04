@@ -3,6 +3,8 @@ import { decodeState, importConfig, initialState, serializeConfig } from './stor
 import { freshDefaults } from './menu'
 import { legacyDefaults } from './legacy-defaults'
 import { defaultsV2 } from './defaults-v2'
+import { freshDefaultsV3 } from './defaults-v3'
+import { calculateTotals, priceLine } from './money'
 import { unknown, verified } from './model'
 it('round-trips unknowns, verified zero, disabled LTOs and overrides', () => {
   const c = freshDefaults()
@@ -84,7 +86,7 @@ it('preserves intentional pricing, flags, tax classes, global zero and per-produ
   const custom = { ...structuredClone(old.products[0]), id: 'staff-special', name: 'Staff Special' }
   old.products.push(custom)
   const c = decodeState(legacyJSON(old)).state.config
-  expect(c.defaultsVersion).toBe(3)
+  expect(c.defaultsVersion).toBe(4)
   expect(c.products[0]).toMatchObject({
     price: old.products[0].price,
     enabled: false,
@@ -158,7 +160,7 @@ it('never overwrites explicit unknowns in a current configuration on reload', ()
   expect(decodeState(JSON.stringify(state)).state.config).toEqual(state.config)
 })
 it('rejects a future defaults revision rather than silently downgrading it', () => {
-  expect(() => importConfig(JSON.stringify({ ...freshDefaults(), defaultsVersion: 4 }))).toThrow()
+  expect(() => importConfig(JSON.stringify({ ...freshDefaults(), defaultsVersion: 5 }))).toThrow()
 })
 it('preserves a full custom modifier list without exceeding schema limits during migration', () => {
   const old = structuredClone(legacyDefaults)
@@ -172,7 +174,7 @@ it('preserves a full custom modifier list without exceeding schema limits during
     })
   const result = decodeState(legacyJSON(old))
   expect(result.warning).toBeNull()
-  expect(result.state.config.defaultsVersion).toBe(3)
+  expect(result.state.config.defaultsVersion).toBe(4)
   expect(result.state.config.extras).toHaveLength(50)
   expect(result.state.config.extras.at(-1)).toEqual(old.extras.at(-1))
 })
@@ -236,4 +238,75 @@ it('v2 open cart adopts physical defaults; paid cash receipts retain original mo
     totals: { cash: 1620, exact: 1622 },
     lines: [{ unitCents: 1545 }],
   })
+})
+
+it('upgrades untouched installed v3 defaults and restores all six products idempotently', () => {
+  const result = decodeState(
+    JSON.stringify({ version: 1, config: freshDefaultsV3(), cart: [], history: [] }),
+  )
+  expect(result.warning).toBeNull()
+  expect(result.state.config).toEqual(freshDefaults())
+  expect(importConfig(serializeConfig(freshDefaultsV3()))).toEqual(freshDefaults())
+  expect(decodeState(JSON.stringify(result.state))).toEqual(result)
+})
+it('v3 manager edits, explicit disables, omissions, taxes and custom products survive', () => {
+  const c = freshDefaultsV3()
+  const changed = c.products.find((p) => p.id === 'mucho-churros')!
+  changed.price = verified(1600)
+  changed.taxClass = 'EXEMPT'
+  // A changed record still disabled is conservatively treated as deliberate.
+  const enabled = c.products.find((p) => p.id === 'signature-burrito')!
+  enabled.enabled = true
+  enabled.price = verified(1420)
+  const regular = c.products.find((p) => p.id === 'regular-burrito')!
+  regular.enabled = false
+  regular.proteinOverrides.steak = { mode: 'total', price: verified(1725) }
+  regular.extraOverrides.guacamole = verified(275)
+  c.proteins[0].price = verified(75)
+  c.extras[0].price = verified(280)
+  c.taxes.gstBasisPoints = 600
+  c.products = c.products.filter((p) => p.id !== 'signature-bowl')
+  const custom = { ...structuredClone(regular), id: 'custom', name: 'Staff special' }
+  c.products.push(custom)
+  const after = importConfig(serializeConfig(c))
+  expect(after.products.find((p) => p.id === changed.id)).toEqual({
+    ...changed,
+    name: 'MUCHO Churro Fries',
+  })
+  expect(after.products.find((p) => p.id === enabled.id)).toEqual(enabled)
+  expect(after.products.find((p) => p.id === regular.id)).toEqual(regular)
+  expect(after.products.some((p) => p.id === 'signature-bowl')).toBe(false)
+  expect(after.products.find((p) => p.id === custom.id)).toEqual(custom)
+  expect(after.proteins).toEqual(c.proteins)
+  expect(after.extras).toEqual(c.extras)
+  expect(after.taxes).toEqual(c.taxes)
+  expect(after.products.find((p) => p.id === 'mucho-cookies')!.enabled).toBe(true)
+})
+it('v3 carts and cash/e-transfer history retain every snapshot and amount', () => {
+  const config = freshDefaultsV3()
+  const product = config.products.find((p) => p.id === 'regular-burrito')!
+  const line = {
+    ...priceLine(product, 'grilled-chicken', ['combo-salsa'], config)!,
+    id: 'line',
+    productId: product.id,
+    proteinId: 'grilled-chicken',
+    name: product.name,
+    taxClass: product.taxClass,
+    quantity: 2,
+  }
+  const totals = calculateTotals([line], config.taxes)
+  const history = (['CASH', 'E_TRANSFER'] as const).map((paymentMethod) => ({
+    id: paymentMethod,
+    timestamp: '2026-10-03T12:00:00.000Z',
+    lines: [line],
+    totals,
+    paymentMethod,
+    tendered: paymentMethod === 'CASH' ? 5000 : totals.exact,
+    change: paymentMethod === 'CASH' ? 5000 - totals.cash : 0,
+    breakdown: [],
+  }))
+  const result = decodeState(JSON.stringify({ version: 1, config, cart: [line], history }))
+  expect(result.warning).toBeNull()
+  expect(result.state.cart).toEqual([line])
+  expect(result.state.history).toEqual(history)
 })

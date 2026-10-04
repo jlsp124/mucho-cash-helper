@@ -1,4 +1,4 @@
-# Store pricing defaults — revision 3
+# Store pricing defaults — revision 4
 
 Source priority: physical Prince George menu boards supplied by the store on 2026-10-03, then the supplied handwritten store reference, then existing defaults only where no physical price exists. All prices below are pre-tax CAD. This documentation is never shown in normal checkout.
 
@@ -47,6 +47,8 @@ Container deposits retain the existing [BC Return-It](https://www.return-it.ca/b
 
 ## Unsupplied physical prices
 
-The following useful existing fallback prices remain editable: Salad $16.75; Queso extra $3; Honey Chili Sauce extra $1.25; Salsa 4oz $2.75; Guacamole/Queso 4oz $3.75; 10-inch Tortilla $0.55; signature Shiitake Burrito/Bowl $10.75/$13.75. These came from the previous delivery-menu defaults and have no supplied physical replacement. Extra Cheese, plain Chips and generic LTO remain unknown/disabled. Zesty Fries, signature Mucho's Way variants, bulk desserts, catering/delivery bundles and unneeded drink variants remain available only in settings, disabled by default.
+The following useful existing fallback prices remain editable: Salad $16.75; Queso extra $3; Honey Chili Sauce extra $1.25; Salsa 4oz $2.75; Guacamole/Queso 4oz $3.75; 10-inch Tortilla $0.55; signature Shiitake Burrito/Bowl $10.75/$13.75. These came from the previous delivery-menu defaults and have no supplied physical replacement. Extra Cheese, plain Chips and generic LTO remain unknown/disabled. Catering/delivery bundles and unneeded drink variants remain available only in settings, disabled by default.
 
-Frozen earlier defaults are migration evidence only. Never change them to revise the current menu. Completed receipts retain their historical charged amounts. Revision 3 upgrades untouched v1/v2 prices and nested delivery modifiers automatically while preserving deliberate edits; no browser storage clearing is needed.
+Absence from photographed signage is not evidence that an existing product is unavailable. Revision 4 restores the six non-drink products that were enabled in v2 and incorrectly hidden in v3: Zesty Fresca Fries Regular $7.20 / MUCHO $10.20; MUCHO Churro Fries $14.95; MUCHO Cookies $12.95; Mucho’s Way Burrito $13.45 / Bowl $16.75. Their previous editable fallback prices remain unchanged. The full v2/v3 audit found no additional accidentally hidden non-drink products. Products already disabled before v3 stay disabled; simplified drinks are preserved.
+
+Frozen earlier defaults are migration evidence only. Never change them to revise the current menu. Completed receipts retain their historical charged amounts. Revision 4 uses a frozen v3 baseline to restore untouched accidental disables on installed devices. Changed product records that remain disabled are conservatively kept disabled; their changed prices, tax classes and overrides survive. V3 recorded only the enabled boolean, so an explicit manager disable identical to the untouched shipped record cannot be distinguished retrospectively. All other explicit availability changes survive. V3 cart snapshots and all completed receipts are unchanged. Older v1/v2 upgrades still receive the physical prices and corrected nested modifiers; no browser storage clearing is needed.

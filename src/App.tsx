@@ -406,9 +406,6 @@ export default function App() {
           </div>
         </header>
         <main>
-          <div className="location-line">
-            <span className="eyebrow">PRINCE GEORGE, BC</span>
-          </div>
           {warning && (
             <div className="warning" role="alert">
               {warning}
