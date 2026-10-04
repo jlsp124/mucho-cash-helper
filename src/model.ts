@@ -27,6 +27,8 @@ const modifierSchema = z.object({
   name: z.string().min(1).max(100),
   price: priceSchema,
   enabled: z.boolean(),
+  includedExtraIds: z.array(z.string()).max(50).default([]),
+  bundle: z.object({ sodaCents: cents, deposit: priceSchema }).optional(),
 })
 export const productSchema = modifierSchema.extend({
   category: z.enum(categories),
@@ -42,12 +44,13 @@ export const productSchema = modifierSchema.extend({
   extraOverrides: z.record(z.string(), priceSchema),
   excludedProteinIds: z.array(z.string()).max(50).default([]),
   excludedExtraIds: z.array(z.string()).max(50).default([]),
+  proteinOptional: z.boolean().default(false),
 })
 export const configSchema = z
   .object({
     version: z.literal(1),
     // Default data has its own revision; v1 exports remain readable.
-    defaultsVersion: z.number().int().min(1).max(2).default(1),
+    defaultsVersion: z.number().int().min(1).max(3).default(1),
     products: z.array(productSchema).max(500),
     proteins: z.array(modifierSchema).max(50),
     extras: z.array(modifierSchema).max(50),
@@ -76,18 +79,22 @@ export const lineSchema = z.object({
   details: z.array(z.object({ name: z.string(), cents: cents })),
   unitCents: cents,
   depositCents: cents,
+  sodaCents: cents.default(0),
   taxClass: z.enum(taxClasses),
   quantity: z.number().int().min(1).max(99),
 })
-export type Line = z.infer<typeof lineSchema>
-export const totalsSchema = z.object({
-  subtotal: cents,
-  gst: cents,
-  pst: cents,
-  deposits: cents,
-  rounding: z.number().int().min(-2).max(2),
-  cash: cents,
-})
+export type Line = z.input<typeof lineSchema>
+export const totalsSchema = z
+  .object({
+    subtotal: cents,
+    gst: cents,
+    pst: cents,
+    deposits: cents,
+    rounding: z.number().int().min(-2).max(2),
+    cash: cents,
+    exact: cents.optional(),
+  })
+  .transform((t) => ({ ...t, exact: t.exact ?? t.cash - t.rounding }))
 export type Totals = z.infer<typeof totalsSchema>
 export const denominationSchema = z.object({
   cents: cents.positive(),
@@ -102,6 +109,7 @@ export const historySchema = z.object({
   tendered: cents,
   change: cents,
   breakdown: z.array(denominationSchema),
+  paymentMethod: z.enum(['CASH', 'E_TRANSFER']).default('CASH'),
 })
 export type CompletedOrder = z.infer<typeof historySchema>
 export function unknown(): Price {

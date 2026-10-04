@@ -285,6 +285,39 @@ export function Settings({
               </details>
             )}
             {editing.customizable && (
+              <>
+                <label className="check-label">
+                  <input
+                    type="checkbox"
+                    checked={editing.proteinOptional}
+                    onChange={(e) => updateProduct({ proteinOptional: e.target.checked })}
+                  />
+                  Protein is optional
+                </label>
+                <details className="advanced">
+                  <summary>Included extras</summary>
+                  {config.extras
+                    .filter((e) => !e.bundle)
+                    .map((extra) => (
+                      <label className="check-label" key={extra.id}>
+                        <input
+                          type="checkbox"
+                          checked={editing.includedExtraIds.includes(extra.id)}
+                          onChange={(e) =>
+                            updateProduct({
+                              includedExtraIds: e.target.checked
+                                ? [...editing.includedExtraIds, extra.id]
+                                : editing.includedExtraIds.filter((id) => id !== extra.id),
+                            })
+                          }
+                        />
+                        {extra.name}
+                      </label>
+                    ))}
+                </details>
+              </>
+            )}
+            {editing.customizable && (
               <details className="advanced">
                 <summary>Paid extras for this product / size</summary>
                 {config.extras.map((extra) => {
@@ -373,6 +406,57 @@ export function Settings({
               value={modifier.price}
               onChange={(price) => setModifier({ ...modifier, price })}
             />
+            {tab === 'Proteins' && (
+              <details className="advanced">
+                <summary>Included extras</summary>
+                {config.extras
+                  .filter((e) => !e.bundle)
+                  .map((extra) => (
+                    <label className="check-label" key={extra.id}>
+                      <input
+                        type="checkbox"
+                        checked={modifier.includedExtraIds.includes(extra.id)}
+                        onChange={(e) =>
+                          setModifier({
+                            ...modifier,
+                            includedExtraIds: e.target.checked
+                              ? [...modifier.includedExtraIds, extra.id]
+                              : modifier.includedExtraIds.filter((id) => id !== extra.id),
+                          })
+                        }
+                      />
+                      {extra.name}
+                    </label>
+                  ))}
+              </details>
+            )}
+            {modifier.bundle && (
+              <>
+                <PriceEditor
+                  label="Included can deposit"
+                  value={modifier.bundle.deposit}
+                  onChange={(deposit) =>
+                    setModifier({ ...modifier, bundle: { ...modifier.bundle!, deposit } })
+                  }
+                />
+                <label className="field">
+                  Included soda portion (PST)
+                  <input
+                    aria-label="Included soda portion (PST)"
+                    type="number"
+                    min="0"
+                    max="10000"
+                    step="0.01"
+                    value={modifier.bundle.sodaCents / 100}
+                    onChange={(e) => {
+                      const sodaCents = parseMoney(e.target.value)
+                      if (sodaCents !== null)
+                        setModifier({ ...modifier, bundle: { ...modifier.bundle!, sodaCents } })
+                    }}
+                  />
+                </label>
+              </>
+            )}
             <label className="check-label">
               <input
                 type="checkbox"
@@ -419,6 +503,7 @@ export function Settings({
                           >
                             <div>
                               <strong>{p.name}</strong>
+                              {p.bundle && <span className="tag">Combo-Up</span>}
                               {!p.enabled && <span className="muted">Disabled</span>}
                               {'lto' in p && Boolean(p.lto) && <span className="tag">LTO</span>}
                             </div>
@@ -458,8 +543,17 @@ export function Settings({
                         extraOverrides: {},
                         excludedProteinIds: [],
                         excludedExtraIds: [],
+                        includedExtraIds: [],
+                        proteinOptional: false,
                       })
-                    else setModifier({ id, name: '', price: unknown(), enabled: true })
+                    else
+                      setModifier({
+                        id,
+                        name: '',
+                        price: unknown(),
+                        enabled: true,
+                        includedExtraIds: [],
+                      })
                   }}
                 >
                   <Plus size={20} />
@@ -600,7 +694,7 @@ export function Settings({
                     <button className="button secondary full">Save tax rates</button>
                   </form>
                 </details>
-                <small>Mucho Cash Helper · 1.1 · CAD</small>
+                <small>CAD</small>
               </div>
             )}
           </>

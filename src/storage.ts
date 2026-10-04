@@ -9,16 +9,19 @@ import {
 } from './model'
 import { DEFAULTS_VERSION, freshDefaults } from './menu'
 import { legacyDefaults } from './legacy-defaults'
+import { defaultsV2 } from './defaults-v2'
+import { priceLine } from './money'
 
 export function migrateConfig(config: Config): Config {
   if (config.defaultsVersion >= DEFAULTS_VERSION) return config
   const next = freshDefaults()
+  const baseline = config.defaultsVersion === 1 ? legacyDefaults : defaultsV2
   const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
-  // Compare each field with the frozen v1 baseline. Untouched shipped fields get
+  // Compare each field with the appropriate frozen baseline. Untouched fields get
   // current data; explicit prices (including store zero), flags, overrides and
   // custom entries survive. Omitted old items in an imported menu stay omitted.
   for (const key of ['products', 'proteins', 'extras'] as const) {
-    const oldItems = legacyDefaults[key]
+    const oldItems = baseline[key]
     const currentItems = next[key]
     const migrated = config[key].map((saved) => {
       const old = oldItems.find((item) => item.id === saved.id)
@@ -30,10 +33,25 @@ export function migrateConfig(config: Config): Config {
         const value = (saved as unknown as Record<string, unknown>)[field]
         const updated = (current as unknown as Record<string, unknown>)[field]
         if (field === 'proteinOverrides' || field === 'extraOverrides') {
-          fields[field] = { ...(updated as object), ...(value as object) }
+          const previous = before as Record<string, unknown>
+          const savedMap = value as Record<string, unknown>
+          const currentMap = updated as Record<string, unknown>
+          const merged: Record<string, unknown> = {}
+          for (const id of new Set([...Object.keys(savedMap), ...Object.keys(currentMap)])) {
+            if (id in savedMap) {
+              if (!equal(savedMap[id], previous[id])) merged[id] = savedMap[id]
+              else if (id in currentMap) merged[id] = currentMap[id]
+            } else if (!(id in previous)) merged[id] = currentMap[id]
+          }
+          fields[field] = merged
         } else if (equal(value, before)) {
           // Do not hide a formerly unpriced item the user intentionally priced.
-          if (field === 'enabled' && saved.price.cents !== null && saved.price.source === 'store')
+          if (
+            field === 'enabled' &&
+            old.price.cents === null &&
+            saved.price.cents !== null &&
+            saved.price.source === 'store'
+          )
             continue
           fields[field] = updated
         }
@@ -63,6 +81,33 @@ const stateSchema = z.object({
   cart: z.array(lineSchema).max(100),
 })
 export type SavedState = { version: 1; config: Config; history: CompletedOrder[]; cart: Line[] }
+function upgradeState(state: SavedState): SavedState {
+  const config = migrateConfig(state.config)
+  if (config === state.config) return state
+  // Refresh only active lines that still match the saved menu. Historical paid
+  // receipts and manually altered snapshots retain their original amounts.
+  const cart = state.cart.map((line) => {
+    const before = state.config.products.find((p) => p.id === line.productId)
+    const afterId =
+      line.productId === 'quesadilla' && line.proteinId === 'veggies'
+        ? 'veggie-quesadilla'
+        : line.productId
+    const after = config.products.find((p) => p.id === afterId)
+    if (!before || !after) return line
+    const previous = priceLine(before, line.proteinId, line.extraIds, state.config)
+    if (
+      !previous ||
+      previous.unitCents !== line.unitCents ||
+      previous.depositCents !== line.depositCents
+    )
+      return line
+    const updated = priceLine(after, line.proteinId, line.extraIds, config)
+    return updated
+      ? { ...line, ...updated, name: after.name, productId: afterId, taxClass: after.taxClass }
+      : line
+  })
+  return { ...state, config, cart }
+}
 export function initialState(): SavedState {
   return { version: 1, config: freshDefaults(), history: [], cart: [] }
 }
@@ -71,8 +116,7 @@ export function decodeState(raw: string | null): { state: SavedState; warning: s
   try {
     const parsed: unknown = JSON.parse(raw)
     const result = stateSchema.safeParse(parsed)
-    if (result.success)
-      return { state: { ...result.data, config: migrateConfig(result.data.config) }, warning: null }
+    if (result.success) return { state: upgradeState(result.data), warning: null }
     // Recover valid independent sections of a damaged/older record; never guess prices.
     const record = z
       .object({
@@ -86,12 +130,12 @@ export function decodeState(raw: string | null): { state: SavedState; warning: s
       const config = configSchema.safeParse(record.data.config)
       const history = z.array(historySchema).safeParse(record.data.history)
       const cart = z.array(lineSchema).max(100).safeParse(record.data.cart)
-      if (config.success) fallback.config = migrateConfig(config.data)
+      if (config.success) fallback.config = config.data
       if (history.success) fallback.history = history.data.slice(0, 20)
       if (cart.success) fallback.cart = cart.data
     }
     return {
-      state: fallback,
+      state: upgradeState(fallback),
       warning: 'Some saved data could not be restored.',
     }
   } catch {

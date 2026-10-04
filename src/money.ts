@@ -1,5 +1,5 @@
 import type { Config, Line, Product, Totals } from './model'
-import { MAX_CENTS, unknown } from './model'
+import { MAX_CENTS, unknown, verified } from './model'
 
 export const money = (cents: number) =>
   new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(cents / 100)
@@ -36,13 +36,15 @@ export function calculateTotals(lines: Line[], taxes: Config['taxes']): Totals {
     deposits += line.depositCents * line.quantity
     if (line.taxClass !== 'EXEMPT') gstBase += value
     if (line.taxClass === 'SODA') pstBase += value
+    else pstBase += (line.sodaCents ?? 0) * line.quantity
   }
   const gst = roundTax(gstBase, taxes.gstBasisPoints),
     pst = roundTax(pstBase, taxes.pstBasisPoints)
   const exact = subtotal + gst + pst + deposits,
     cash = cashRound(exact)
-  if (cash > MAX_CENTS) throw new Error('Order exceeds $10,000 limit. Split this order.')
-  return { subtotal, gst, pst, deposits, cash, rounding: cash - exact }
+  if (Math.max(cash, exact) > MAX_CENTS)
+    throw new Error('Order exceeds $10,000 limit. Split this order.')
+  return { subtotal, gst, pst, deposits, exact, cash, rounding: cash - exact }
 }
 export const denominations = [
   { cents: 10000, label: '$100 bill' },
@@ -74,7 +76,14 @@ export function getProteinPrice(product: Product, id: string, config: Config) {
     }
   )
 }
-export function getExtraPrice(product: Product, id: string, config: Config) {
+export function extraIncluded(product: Product, id: string, config: Config, proteinId?: string) {
+  return (
+    product.includedExtraIds.includes(id) ||
+    Boolean(config.proteins.find((p) => p.id === proteinId)?.includedExtraIds.includes(id))
+  )
+}
+export function getExtraPrice(product: Product, id: string, config: Config, proteinId?: string) {
+  if (extraIncluded(product, id, config, proteinId)) return verified(0)
   return product.extraOverrides[id] ?? config.extras.find((e) => e.id === id)?.price ?? unknown()
 }
 export function itemPrice(
@@ -87,16 +96,52 @@ export function itemPrice(
   let result = protein?.mode === 'total' ? protein.price.cents : product.price.cents
   if (
     result === null ||
-    (product.customizable && !protein) ||
+    (product.customizable && !product.proteinOptional && !protein) ||
     protein?.price.cents === null ||
     product.deposit.cents === null
   )
     return null
   if (protein?.mode === 'adjustment') result += protein.price.cents!
-  for (const id of extraIds) {
-    const amount = getExtraPrice(product, id, config).cents
+  if (extraIds.filter((id) => config.extras.find((e) => e.id === id)?.bundle).length > 1)
+    return null
+  for (const id of new Set(extraIds)) {
+    const extra = config.extras.find((e) => e.id === id)
+    const amount = getExtraPrice(product, id, config, proteinId).cents
+    if (extra?.bundle?.deposit.cents === null) return null
     if (amount === null) return null
     result += amount
   }
   return result <= MAX_CENTS ? result : null
+}
+
+export function priceLine(
+  product: Product,
+  proteinId: string | undefined,
+  extraIds: string[],
+  config: Config,
+) {
+  const unitCents = itemPrice(product, proteinId, extraIds, config)
+  if (unitCents === null) return null
+  const protein = proteinId ? config.proteins.find((p) => p.id === proteinId) : undefined
+  const pricing = proteinId ? getProteinPrice(product, proteinId, config) : undefined
+  const ids = [...new Set(extraIds)].filter((id) => !extraIncluded(product, id, config, proteinId))
+  let sodaCents = 0,
+    depositCents = product.deposit.cents!
+  const details = protein
+    ? [{ name: protein.name, cents: pricing?.mode === 'adjustment' ? pricing.price.cents! : 0 }]
+    : []
+  for (const id of ids) {
+    const extra = config.extras.find((e) => e.id === id)
+    if (!extra) return null
+    const cents = getExtraPrice(product, id, config, proteinId).cents!
+    details.push({
+      name: extra.bundle ? `${extra.name} Combo-Up · Pop Can included` : extra.name,
+      cents,
+    })
+    if (extra.bundle) {
+      sodaCents += Math.min(extra.bundle.sodaCents, cents)
+      depositCents += extra.bundle.deposit.cents!
+    }
+  }
+  return { unitCents, details, sodaCents, depositCents, extraIds: ids }
 }

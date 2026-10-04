@@ -2,6 +2,7 @@ import { expect, it } from 'vitest'
 import { decodeState, importConfig, initialState, serializeConfig } from './storage'
 import { freshDefaults } from './menu'
 import { legacyDefaults } from './legacy-defaults'
+import { defaultsV2 } from './defaults-v2'
 import { unknown, verified } from './model'
 it('round-trips unknowns, verified zero, disabled LTOs and overrides', () => {
   const c = freshDefaults()
@@ -30,7 +31,7 @@ it('falls back safely from unsupported old versions', () =>
   expect(decodeState('{"version":0}').warning).toBeTruthy())
 it.each([-1, 1.5, 1000001, '1500'])('rejects invalid price %s in imports', (value) => {
   const c = freshDefaults()
-  const raw = JSON.stringify(c).replace('"cents":1345', `"cents":${JSON.stringify(value)}`)
+  const raw = JSON.stringify(c).replace('"cents":1075', `"cents":${JSON.stringify(value)}`)
   expect(() => importConfig(raw)).toThrow()
 })
 it('rejects duplicate IDs', () => {
@@ -83,7 +84,7 @@ it('preserves intentional pricing, flags, tax classes, global zero and per-produ
   const custom = { ...structuredClone(old.products[0]), id: 'staff-special', name: 'Staff Special' }
   old.products.push(custom)
   const c = decodeState(legacyJSON(old)).state.config
-  expect(c.defaultsVersion).toBe(2)
+  expect(c.defaultsVersion).toBe(3)
   expect(c.products[0]).toMatchObject({
     price: old.products[0].price,
     enabled: false,
@@ -103,7 +104,7 @@ it('preserves intentional pricing, flags, tax classes, global zero and per-produ
   expect(c.products.find((p) => p.id === custom.id)).toEqual(custom)
   expect(c.taxes.gstBasisPoints).toBe(600)
 })
-it('keeps cart and completed receipt snapshots unchanged during upgrade', () => {
+it('preserves active snapshots with unresolved legacy prices and all paid receipt amounts', () => {
   const line = {
     id: 'line',
     productId: 'regular-burrito',
@@ -132,8 +133,15 @@ it('keeps cart and completed receipt snapshots unchanged during upgrade', () => 
   }
   const result = decodeState(legacyJSON(structuredClone(legacyDefaults), [receipt], [line]))
   expect(result.warning).toBeNull()
-  expect(result.state.cart).toEqual([line])
-  expect(result.state.history).toEqual([receipt])
+  expect(result.state.cart[0].unitCents).toBe(1545)
+  expect(result.state.history).toEqual([
+    {
+      ...receipt,
+      paymentMethod: 'CASH',
+      lines: [{ ...line, sodaCents: 0 }],
+      totals: { ...receipt.totals, exact: 1622 },
+    },
+  ])
   expect(decodeState(JSON.stringify(result.state))).toEqual(result)
 })
 it('migrates v1 imports, respects omitted products, and adds new extras only once', () => {
@@ -150,7 +158,7 @@ it('never overwrites explicit unknowns in a current configuration on reload', ()
   expect(decodeState(JSON.stringify(state)).state.config).toEqual(state.config)
 })
 it('rejects a future defaults revision rather than silently downgrading it', () => {
-  expect(() => importConfig(JSON.stringify({ ...freshDefaults(), defaultsVersion: 3 }))).toThrow()
+  expect(() => importConfig(JSON.stringify({ ...freshDefaults(), defaultsVersion: 4 }))).toThrow()
 })
 it('preserves a full custom modifier list without exceeding schema limits during migration', () => {
   const old = structuredClone(legacyDefaults)
@@ -160,10 +168,72 @@ it('preserves a full custom modifier list without exceeding schema limits during
       name: 'Custom extra',
       price: verified(25),
       enabled: true,
+      includedExtraIds: [],
     })
   const result = decodeState(legacyJSON(old))
   expect(result.warning).toBeNull()
-  expect(result.state.config.defaultsVersion).toBe(2)
+  expect(result.state.config.defaultsVersion).toBe(3)
   expect(result.state.config.extras).toHaveLength(50)
   expect(result.state.config.extras.at(-1)).toEqual(old.extras.at(-1))
+})
+
+it('upgrades the exact currently deployed v2 defaults, including nested taco/quesadilla overrides', () => {
+  const result = decodeState(
+    JSON.stringify({ version: 1, config: defaultsV2, cart: [], history: [] }),
+  )
+  expect(result.warning).toBeNull()
+  expect(result.state.config).toEqual(freshDefaults())
+  expect(decodeState(JSON.stringify(result.state))).toEqual(result)
+})
+it('v2 deliberate changes survive, including nested overrides at the same old numeric amount', () => {
+  const config = structuredClone(defaultsV2)
+  config.products[1].price = verified(1545) // Deliberate store value, not untouched online seed.
+  const trio = config.products.find((p) => p.id === 'taco-trio')!
+  trio.proteinOverrides.steak.price = verified(600)
+  trio.proteinOverrides['beef-barbacoa'].price.cents = 275
+  trio.extraOverrides.queso = verified(125)
+  config.extras[0].price = verified(300)
+  const migrated = importConfig(JSON.stringify(config))
+  expect(migrated.products[1].price).toEqual(verified(1545))
+  expect(migrated.extras[0].price).toEqual(verified(300))
+  const updated = migrated.products.find((p) => p.id === 'taco-trio')!
+  expect(updated.proteinOverrides.steak.price).toEqual(verified(600))
+  expect(updated.proteinOverrides['beef-barbacoa'].price.cents).toBe(275)
+  expect(updated.proteinOverrides['shiitake-carnitas']).toBeUndefined()
+  expect(updated.extraOverrides.queso).toEqual(verified(125))
+})
+it('v2 open cart adopts physical defaults; paid cash receipts retain original money and gain method/exact total', () => {
+  const line = {
+    id: 'line',
+    productId: 'regular-burrito',
+    name: 'Regular Burrito',
+    proteinId: 'grilled-chicken',
+    extraIds: [],
+    details: [{ name: 'Grilled Chicken', cents: 0 }],
+    unitCents: 1545,
+    depositCents: 0,
+    taxClass: 'FOOD',
+    quantity: 1,
+  }
+  const receipt = {
+    id: 'receipt',
+    timestamp: '2026-10-03T12:00:00.000Z',
+    lines: [line],
+    totals: { subtotal: 1545, gst: 77, pst: 0, deposits: 0, rounding: -2, cash: 1620 },
+    tendered: 2000,
+    change: 380,
+    breakdown: [],
+  }
+  const result = decodeState(
+    JSON.stringify({ version: 1, config: defaultsV2, cart: [line], history: [receipt] }),
+  )
+  expect(result.warning).toBeNull()
+  expect(result.state.cart[0].unitCents).toBe(1245)
+  expect(result.state.history[0]).toMatchObject({
+    paymentMethod: 'CASH',
+    tendered: 2000,
+    change: 380,
+    totals: { cash: 1620, exact: 1622 },
+    lines: [{ unitCents: 1545 }],
+  })
 })

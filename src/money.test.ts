@@ -82,6 +82,18 @@ describe('change', () => {
   })
 })
 describe('taxes and refundable deposits', () => {
+  it('exposes the exact electronic total independently of nickel-rounded cash', () => {
+    expect(calculateTotals([line(1784)], taxes)).toMatchObject({
+      exact: 1873,
+      cash: 1875,
+      rounding: 2,
+    })
+    expect(calculateTotals([line(1431)], taxes)).toMatchObject({
+      exact: 1503,
+      cash: 1505,
+      rounding: 2,
+    })
+  })
   it('food only: GST, no PST', () =>
     expect(calculateTotals([line(1545)], taxes)).toEqual({
       subtotal: 1545,
@@ -89,6 +101,7 @@ describe('taxes and refundable deposits', () => {
       pst: 0,
       deposits: 0,
       rounding: -2,
+      exact: 1622,
       cash: 1620,
     }))
   it('soda only: GST and PST', () =>
@@ -98,6 +111,7 @@ describe('taxes and refundable deposits', () => {
       pst: 18,
       deposits: 0,
       rounding: -1,
+      exact: 281,
       cash: 280,
     }))
   it('mixed food + soda: PST only on soda', () =>
@@ -107,6 +121,7 @@ describe('taxes and refundable deposits', () => {
       pst: 18,
       deposits: 0,
       rounding: 2,
+      exact: 1903,
       cash: 1905,
     }))
   it('non-soda beverage: no PST', () =>
@@ -116,6 +131,7 @@ describe('taxes and refundable deposits', () => {
       pst: 0,
       deposits: 0,
       rounding: 2,
+      exact: 263,
       cash: 265,
     }))
   it('deposits are separate and untaxed', () =>
@@ -125,6 +141,7 @@ describe('taxes and refundable deposits', () => {
       pst: 35,
       deposits: 20,
       rounding: 0,
+      exact: 580,
       cash: 580,
     }))
   it('exempt class and configured tax rates', () => {
@@ -143,6 +160,7 @@ describe('taxes and refundable deposits', () => {
       pst: 0,
       deposits: 0,
       rounding: 1,
+      exact: 19,
       cash: 20,
     }))
   it('does not nickel-round each tax line', () =>
@@ -152,6 +170,7 @@ describe('taxes and refundable deposits', () => {
       pst: 9,
       deposits: 0,
       rounding: 0,
+      exact: 140,
       cash: 140,
     }))
   it('limits excessive orders without overflow', () =>
@@ -189,9 +208,9 @@ describe('flexible item pricing', () => {
     c.proteins.find((p) => p.id === 'steak')!.price = verified(325)
     c.extras[0].price = verified(150)
     c.extras[1].price = unknown()
-    expect(itemPrice(p, 'grilled-chicken', [], c)).toBe(1545)
-    expect(itemPrice(p, 'beef-barbacoa', [], c)).toBe(1820)
-    expect(itemPrice(p, 'steak', [c.extras[0].id], c)).toBe(2020)
+    expect(itemPrice(p, 'grilled-chicken', [], c)).toBe(1245)
+    expect(itemPrice(p, 'beef-barbacoa', [], c)).toBe(1520)
+    expect(itemPrice(p, 'steak', [c.extras[0].id], c)).toBe(1720)
     expect(itemPrice(p, 'steak', [c.extras[1].id], c)).toBeNull()
   })
   it('product/size upcharge overrides global, including explicit unknown', () => {
@@ -199,7 +218,7 @@ describe('flexible item pricing', () => {
       p = c.products.find((p) => p.id === 'mucho-burrito')!
     c.proteins[0].price = verified(100)
     p.proteinOverrides[c.proteins[0].id] = { mode: 'adjustment', price: verified(350) }
-    expect(itemPrice(p, c.proteins[0].id, [], c)).toBe(2265)
+    expect(itemPrice(p, c.proteins[0].id, [], c)).toBe(1925)
     p.proteinOverrides[c.proteins[0].id].price.cents = null
     expect(itemPrice(p, c.proteins[0].id, [], c)).toBeNull()
     expect(getProteinPrice(p, c.proteins[0].id, c).price.cents).toBeNull()

@@ -5,6 +5,8 @@ import { unknown, verified, type Config } from '../src/model'
 
 async function setup(page: Page, edit?: (c: Config) => void) {
   const c = freshDefaults()
+  c.products.find((p) => p.id === 'regular-burrito')!.price = verified(1545)
+  c.products.find((p) => p.id === 'chips-queso')!.price = verified(595)
   c.proteins.find((p) => p.id === 'grilled-chicken')!.price = verified(0)
   c.proteins.find((p) => p.id === 'beef-barbacoa')!.price = verified(250)
   c.proteins.find((p) => p.id === 'steak')!.price = verified(300)
@@ -74,7 +76,7 @@ test('two burritos and chips, quantity and undo', async ({ page }) => {
   await burrito(page)
   await burrito(page)
   await page.getByRole('button', { name: 'Sides', exact: true }).click()
-  await page.getByRole('button', { name: /^Chips \+ Queso \$/ }).click()
+  await page.getByRole('button', { name: /^Chips & Queso · Regular \$/ }).click()
   await review(page)
   await expect(page.locator('.cash-total')).toContainText('$38.70')
   await page.getByRole('button', { name: 'Decrease Regular Burrito quantity' }).click()
@@ -88,7 +90,7 @@ test('mixed food and soda, GST PST and separate deposit', async ({ page }) => {
   await page.getByRole('button', { name: 'Drinks', exact: true }).click()
   await page
     .locator('.product-card')
-    .filter({ has: page.getByRole('heading', { name: 'Canned Pepsi', exact: true }) })
+    .filter({ has: page.getByRole('heading', { name: 'Pop Can', exact: true }) })
     .click()
   await review(page)
   await expect(page.locator('.receipt-totals')).toContainText('$0.90')
@@ -101,9 +103,9 @@ test('multiple soda and non-soda drinks', async ({ page }) => {
   await page.getByRole('button', { name: 'Drinks', exact: true }).click()
   await page
     .locator('.product-card')
-    .filter({ has: page.getByRole('heading', { name: 'Canned Pepsi', exact: true }) })
+    .filter({ has: page.getByRole('heading', { name: 'Pop Can', exact: true }) })
     .click()
-  await page.getByRole('button', { name: /^Bottled Water \$/ }).click()
+  await page.getByRole('button', { name: /^Water Bottle \$/ }).click()
   await page
     .locator('.product-card')
     .filter({ has: page.getByRole('heading', { name: 'Jarritos', exact: true }) })
@@ -166,7 +168,7 @@ test('explicit custom unknowns still require saved prices', async ({ page }) => 
   await page.getByRole('button', { name: 'Drinks', exact: true }).click()
   await page
     .locator('.product-card')
-    .filter({ has: page.getByRole('heading', { name: 'Canned Pepsi', exact: true }) })
+    .filter({ has: page.getByRole('heading', { name: 'Pop Can', exact: true }) })
     .click()
   await expect(page.getByRole('button', { name: /Add to order/ })).toBeDisabled()
   await page.getByRole('button', { name: 'No deposit' }).click()
@@ -199,7 +201,7 @@ test('price editor persists, custom product, import and reset protection', async
 })
 test('offline reload, configured checkout and history', async ({ page, context }) => {
   await setup(page)
-  await expect(page.getByText('Offline ready', { exact: true })).toBeVisible({ timeout: 15000 })
+  await expect(page.getByText(/^(Offline ready|Offline|Online)$/i)).toHaveCount(0)
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready
     if (!navigator.serviceWorker.controller)
@@ -224,7 +226,7 @@ test('required $13.65 Canadian denomination breakdown', async ({ page }) => {
     c.products.find((p) => p.id === 'chips-queso')!.price = verified(3462)
   })
   await page.getByRole('button', { name: 'Sides', exact: true }).click()
-  await page.getByRole('button', { name: /^Chips \+ Queso \$/ }).click()
+  await page.getByRole('button', { name: /^Chips & Queso · Regular \$/ }).click()
   await review(page)
   await expect(page.locator('.cash-total')).toContainText('$36.35')
   await page.getByRole('button', { name: '$50', exact: true }).click()
@@ -245,7 +247,7 @@ test('cash rounding up is visible and custom pennies are rejected', async ({ pag
     c.products.find((p) => p.id === 'chips-queso')!.price = verified(503)
   })
   await page.getByRole('button', { name: 'Sides', exact: true }).click()
-  await page.getByRole('button', { name: /^Chips \+ Queso \$/ }).click()
+  await page.getByRole('button', { name: /^Chips & Queso · Regular \$/ }).click()
   await review(page)
   await expect(page.locator('.receipt-totals')).toContainText('+$0.02')
   await expect(page.locator('.cash-total')).toContainText('$5.30')
@@ -299,7 +301,7 @@ test('Settings exposes per-size protein prices and rejects malformed money', asy
   await page.getByRole('button', { name: /^Beef Barbacoa / }).click()
   await expect(page.locator('.builder-price')).toHaveText('$19.50')
 })
-for (const width of [320, 375, 390, 430, 1200]) {
+for (const width of [320, 375, 390, 430, 768, 820, 1024, 1180, 1200]) {
   test(`mobile and desktop layout ${width}px, checkout targets and no overflow`, async ({
     page,
   }) => {

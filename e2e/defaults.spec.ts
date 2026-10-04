@@ -28,15 +28,16 @@ async function add(page: Page) {
 }
 
 for (const [category, name, protein, extra, price, cash] of [
-  ['Burritos', 'Regular Burrito', 'Grilled Chicken', '', '$15.45', '$16.20'],
-  ['Burritos', 'Regular Burrito', 'Beef Barbacoa', '', '$18.40', '$19.30'],
-  ['Burritos', 'Regular Burrito', 'Steak', 'Guacamole', '$21.40', '$22.45'],
-  ['Bowls / Salads', 'Bowl', 'Grilled Chicken', '', '$16.75', '$17.60'],
-  ['Tacos', 'Taco Solo', 'Grilled Chicken', '', '$5.45', '$5.70'],
-  ['Tacos', 'Taco Solo', 'Beef Barbacoa', '', '$7.45', '$7.80'],
-  ['Tacos', 'Taco Trio', 'Steak', '', '$21.35', '$22.40'],
-  ['Quesadilla', 'Quesadilla', 'Grilled Chicken', '', '$17.30', '$18.15'],
-  ['Quesadilla', 'Quesadilla', 'Veggies', '', '$13.55', '$14.25'],
+  ['Burritos', 'Regular Burrito', 'Grilled Chicken', '', '$12.45', '$13.05'],
+  ['Burritos', 'Regular Burrito', 'Beef Barbacoa', 'Guacamole', '$16.95', '$17.80'],
+  ['Burritos', 'MUCHO Burrito', 'Grilled Chicken', '', '$15.75', '$16.55'],
+  ['Bowls / Salads', 'Bowl', 'Steak', '', '$15.75', '$16.55'],
+  ['Tacos', 'Single Taco', 'Grilled Chicken', '', '$4.45', '$4.65'],
+  ['Tacos', 'Single Taco', 'Beef Barbacoa', '', '$6.45', '$6.75'],
+  ['Tacos', 'Taco Trio', 'Steak', '', '$14.45', '$15.15'],
+  ['Quesadilla', 'Protein Quesadilla', 'Grilled Chicken', '', '$13.95', '$14.65'],
+  ['Quesadilla', 'Protein Quesadilla', 'Beef Barbacoa', '', '$15.95', '$16.75'],
+  ['Quesadilla', 'Veggie Quesadilla', 'Fajita Veggies', '', '$10.95', '$11.50'],
 ]) {
   test(`shipped defaults: ${name} + ${protein} ${extra}`, async ({ page }) => {
     await page.goto('./')
@@ -70,10 +71,10 @@ test('fresh defaults: multiple items, soda, cash, persisted history and offline 
   await add(page)
   await item(page, 'Bowls / Salads', 'Bowl', 'Grilled Chicken')
   await add(page)
-  await item(page, 'Drinks', 'Canned Pepsi') // Complete default deposit: immediate add.
+  await item(page, 'Drinks', 'Pop Can') // Complete default deposit: immediate add.
   await page.reload()
   await expect(page.locator('.cart-bar')).toContainText('3 items')
-  await expect(page.getByText('Offline ready', { exact: true })).toBeVisible({ timeout: 15000 })
+  await expect(page.getByText(/^(Offline ready|Offline|Online)$/i)).toHaveCount(0)
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready
     if (!navigator.serviceWorker.controller)
@@ -86,17 +87,23 @@ test('fresh defaults: multiple items, soda, cash, persisted history and offline 
   await context.setOffline(true)
   await page.reload()
   await page.getByRole('button', { name: /VIEW ORDER/ }).click()
-  await expect(page.locator('.cash-total')).toContainText('$37.55')
+  await expect(page.locator('.cash-total')).toContainText('$30.15')
   await expect(page.locator('.receipt-totals')).toContainText('$0.10')
   await page.getByRole('button', { name: '$50', exact: true }).click()
-  await expect(page.locator('.change-amount h3')).toHaveText('$12.45')
-  await expect(page.locator('.denomination')).toHaveText(['$10× 1', '$2× 1', '25¢× 1', '10¢× 2'])
+  await expect(page.locator('.change-amount h3')).toHaveText('$19.85')
+  await expect(page.locator('.denomination')).toHaveText([
+    '$10× 1',
+    '$5× 1',
+    '$2× 2',
+    '25¢× 3',
+    '10¢× 1',
+  ])
   await page.getByRole('button', { name: 'DONE / NEXT ORDER' }).click()
   await page.reload()
   await page.getByRole('button', { name: 'Order history', exact: true }).click()
   await expect(page.locator('.history-row')).toHaveCount(1)
   await page.locator('.history-row').click()
-  await expect(page.getByRole('dialog', { name: 'Completed order' })).toContainText('$37.55')
+  await expect(page.getByRole('dialog', { name: 'Completed order' })).toContainText('$30.15')
 })
 
 test('product pricing mode changes preserve its effective protein price', async ({ page }) => {
@@ -104,25 +111,25 @@ test('product pricing mode changes preserve its effective protein price', async 
   await page.getByRole('button', { name: 'Menu & Prices', exact: true }).click()
   await page
     .getByRole('dialog')
-    .getByRole('button', { name: /^Quesadilla \$/ })
+    .getByRole('button', { name: /^Protein Quesadilla \$/ })
     .click()
   await page.getByText('Protein prices for this product / size', { exact: true }).click()
   await page.getByRole('combobox', { name: 'Grilled Chicken pricing mode' }).selectOption('total')
   await expect(
     page.getByRole('textbox', { name: 'Grilled Chicken full price', exact: true }),
-  ).toHaveValue('17.30')
+  ).toHaveValue('13.95')
   await page
     .getByRole('combobox', { name: 'Grilled Chicken pricing mode' })
     .selectOption('adjustment')
   await expect(
     page.getByRole('textbox', { name: 'Grilled Chicken upcharge', exact: true }),
-  ).toHaveValue('3.75')
+  ).toHaveValue('0.00')
   await page.getByRole('button', { name: 'Save product', exact: true }).click()
   await page.getByRole('button', { name: 'Close Menu & Prices' }).click()
   await page.getByRole('button', { name: 'Quesadilla', exact: true }).click()
-  await page.getByRole('button', { name: /^Quesadilla \$/ }).click()
+  await page.getByRole('button', { name: /^Protein Quesadilla \$/ }).click()
   await page.getByRole('button', { name: /^Grilled Chicken/ }).click()
-  await expect(page.locator('.builder-price')).toHaveText('$17.30')
+  await expect(page.locator('.builder-price')).toHaveText('$13.95')
 })
 
 test('deployed v1 localStorage upgrades without losing custom prices or history', async ({
@@ -148,7 +155,7 @@ test('deployed v1 localStorage upgrades without losing custom prices or history'
     '$14.10',
   )
   await item(page, 'Burritos', 'Regular Burrito', 'Beef Barbacoa', 'Guacamole')
-  await expect(page.locator('.builder-price')).toHaveText('$21.40')
+  await expect(page.locator('.builder-price')).toHaveText('$16.95')
   await expect(page.locator('.resolve-price')).toHaveCount(0)
   await add(page)
   await page.getByRole('button', { name: /VIEW ORDER/ }).click()
@@ -156,12 +163,12 @@ test('deployed v1 localStorage upgrades without losing custom prices or history'
   await page.getByRole('button', { name: 'DONE / NEXT ORDER' }).click()
   await page.reload()
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('mucho-cash-helper:v1')!))
-  expect(saved.config.defaultsVersion).toBe(2)
+  expect(saved.config.defaultsVersion).toBe(3)
   expect(saved.history).toHaveLength(1)
   expect(
     saved.config.products.find((p: { id: string }) => p.id === 'small-burrito').price.cents,
   ).toBe(1410)
-  await item(page, 'Quesadilla', 'Quesadilla', 'Grilled Chicken')
-  await expect(page.locator('.builder-price')).toHaveText('$17.30')
+  await item(page, 'Quesadilla', 'Protein Quesadilla', 'Grilled Chicken')
+  await expect(page.locator('.builder-price')).toHaveText('$13.95')
   await expect(page.locator('.resolve-price')).toHaveCount(0)
 })

@@ -11,7 +11,6 @@ import {
   ShoppingBag,
   Trash2,
   Undo2,
-  WifiOff,
 } from 'lucide-react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import {
@@ -28,6 +27,8 @@ import {
   getExtraPrice,
   getProteinPrice,
   itemPrice,
+  extraIncluded,
+  priceLine,
   money,
   parseMoney,
 } from './money'
@@ -55,9 +56,7 @@ export default function App() {
   const [otherText, setOtherText] = useState('')
   const [viewOrder, setViewOrder] = useState<CompletedOrder | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
-  const [online, setOnline] = useState(navigator.onLine)
   const {
-    offlineReady: [offlineReady],
     needRefresh: [needRefresh],
     updateServiceWorker,
   } = useRegisterSW()
@@ -81,15 +80,13 @@ export default function App() {
     return () => clearTimeout(id)
   }, [toast])
   useEffect(() => {
-    const update = () => setOnline(navigator.onLine)
-    window.addEventListener('online', update)
-    window.addEventListener('offline', update)
-    return () => {
-      window.removeEventListener('online', update)
-      window.removeEventListener('offline', update)
-    }
-  }, [])
-  let totals = { subtotal: 0, gst: 0, pst: 0, deposits: 0, rounding: 0, cash: 0 }
+    // Install cached updates only between orders, after state has been saved.
+    if (needRefresh && !cart.length && screen === 'menu' && !selection)
+      void updateServiceWorker(true).catch(() =>
+        setWarning('The app update could not finish. Reload when the order is complete.'),
+      )
+  }, [needRefresh, cart.length, screen, selection, updateServiceWorker])
+  let totals = { subtotal: 0, gst: 0, pst: 0, deposits: 0, rounding: 0, exact: 0, cash: 0 }
   let totalError = ''
   try {
     totals = calculateTotals(cart, config.taxes)
@@ -104,7 +101,6 @@ export default function App() {
     selection && selectedProduct
       ? itemPrice(selectedProduct, selection.proteinId, selection.extraIds, config)
       : null
-  const products = config.products.filter((p) => p.enabled && p.category === category)
   function mutateCart(next: Line[]) {
     try {
       calculateTotals(next, config.taxes)
@@ -134,7 +130,14 @@ export default function App() {
       addLine(product, undefined, [])
       return
     }
-    setSelection({ productId: product.id, extraIds: [] })
+    const proteins = config.proteins.filter(
+      (p) => p.enabled && !product.excludedProteinIds.includes(p.id),
+    )
+    setSelection({
+      productId: product.id,
+      extraIds: [],
+      proteinId: proteins.length === 1 ? proteins[0].id : undefined,
+    })
   }
   function addLine(
     product: Product,
@@ -142,34 +145,17 @@ export default function App() {
     extraIds: string[],
     editingId?: string,
   ) {
-    const unitCents = itemPrice(product, proteinId, extraIds, config)
-    if (unitCents === null) return
-    const protein = proteinId ? getProteinPrice(product, proteinId, config) : undefined
-    const details = [
-      ...(proteinId
-        ? [
-            {
-              name: config.proteins.find((p) => p.id === proteinId)!.name,
-              cents: protein?.mode === 'adjustment' ? protein.price.cents! : 0,
-            },
-          ]
-        : []),
-      ...extraIds.map((id) => ({
-        name: config.extras.find((p) => p.id === id)!.name,
-        cents: getExtraPrice(product, id, config).cents!,
-      })),
-    ]
+    const priced = priceLine(product, proteinId, extraIds, config)
+    if (!priced) return
+    const { unitCents } = priced
     const previous = cart.find((l) => l.id === editingId)
     const line: Line = {
       id: editingId ?? crypto.randomUUID(),
       productId: product.id,
       name: product.name,
       proteinId,
-      extraIds,
-      unitCents,
-      details,
+      ...priced,
       taxClass: product.taxClass,
-      depositCents: product.deposit.cents!,
       quantity: previous?.quantity ?? 1,
     }
     const identical =
@@ -178,10 +164,11 @@ export default function App() {
         (l) =>
           l.productId === product.id &&
           l.proteinId === proteinId &&
-          JSON.stringify([...l.extraIds].sort()) === JSON.stringify([...extraIds].sort()) &&
+          JSON.stringify([...l.extraIds].sort()) === JSON.stringify([...priced.extraIds].sort()) &&
           l.unitCents === unitCents &&
           l.depositCents === line.depositCents &&
           l.taxClass === line.taxClass &&
+          (l.sodaCents ?? 0) === line.sodaCents &&
           l.quantity < 99,
       )
     const next = editingId
@@ -252,24 +239,28 @@ export default function App() {
     setToast('')
     if (amount >= totals.cash && cart.length && !totalError) setScreen('change')
   }
-  function done() {
-    if (tendered === null || tendered < totals.cash || !cart.length || totalError) return
-    const change = tendered - totals.cash
+  function done(paymentMethod: CompletedOrder['paymentMethod'] = 'CASH') {
+    if (!cart.length || totalError) return
+    if (paymentMethod === 'CASH' && (tendered === null || tendered < totals.cash)) return
+    const paid = paymentMethod === 'CASH' ? tendered! : totals.exact
+    const change = paymentMethod === 'CASH' ? paid - totals.cash : 0
     const order: CompletedOrder = {
       id: crypto.randomUUID(),
       timestamp: completionTimestamp(),
-      lines: structuredClone(cart),
+      lines: structuredClone(cart).map((line) => ({ ...line, sodaCents: line.sodaCents ?? 0 })),
       totals,
-      tendered,
+      tendered: paid,
       change,
-      breakdown: changeBreakdown(change),
+      paymentMethod,
+      breakdown: paymentMethod === 'CASH' ? changeBreakdown(change) : [],
     }
     setHistory((h) => [order, ...h].slice(0, 20))
     setCart([])
     setUndo([])
     setTendered(null)
     setScreen('menu')
-    notify('Order completed · ready for the next one')
+    setOther(false)
+    notify(paymentMethod === 'CASH' ? 'Order completed' : 'E-transfer recorded')
   }
   function renderLines(lines: Line[], editable = false) {
     return (
@@ -417,32 +408,12 @@ export default function App() {
         <main>
           <div className="location-line">
             <span className="eyebrow">PRINCE GEORGE, BC</span>
-            <span className="local-status">
-              {!online ? <WifiOff size={13} /> : <span className="status-dot" />}
-              {!online
-                ? 'Offline'
-                : offlineReady || Boolean(navigator.serviceWorker?.controller)
-                  ? 'Offline ready'
-                  : 'Online'}
-            </span>
           </div>
           {warning && (
             <div className="warning" role="alert">
               {warning}
               <button className="text-button" onClick={() => setWarning(null)}>
                 Dismiss
-              </button>
-            </div>
-          )}
-          {needRefresh && (
-            <div className="update-banner">
-              <span>A fresh version is ready.</span>
-              <button
-                className="text-button"
-                disabled={cart.length > 0 || screen === 'change'}
-                onClick={() => updateServiceWorker(true)}
-              >
-                {cart.length ? 'Finish order to update' : 'Update app'}
               </button>
             </div>
           )}
@@ -454,6 +425,12 @@ export default function App() {
                 className={category === c ? 'active' : ''}
                 onClick={(e) => {
                   setCategory(c)
+                  if (window.matchMedia('(min-width: 768px)').matches) {
+                    document
+                      .getElementById('menu-' + c)
+                      ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+                    return
+                  }
                   e.currentTarget.scrollIntoView({
                     behavior: 'smooth',
                     block: 'nearest',
@@ -465,28 +442,39 @@ export default function App() {
               </button>
             ))}
           </nav>
-          <section className="menu-section" aria-labelledby="category-title">
-            <div className="section-heading">
-              <h1 id="category-title">{category}</h1>
-            </div>
-            <div className="product-grid">
-              {products.map((p) => (
-                <button className="product-card" key={p.id} onClick={() => selectProduct(p)}>
-                  <h2>{p.name}</h2>
-                  <strong>{p.price.cents === null ? '—' : money(p.price.cents)}</strong>
-                </button>
-              ))}
-            </div>
-            {products.length === 0 && (
-              <div className="empty">
-                <ShoppingBag size={30} />
-                <h3>No items here yet</h3>
-                <button className="button secondary" onClick={() => setScreen('settings')}>
-                  Edit menu
-                </button>
-              </div>
-            )}
-          </section>
+          <div className="menu-workspace">
+            {categories.map((section) => {
+              const products = config.products.filter((p) => p.enabled && p.category === section)
+              return (
+                <section
+                  key={section}
+                  id={'menu-' + section}
+                  className={`menu-section ${category === section ? 'selected-category' : ''}`}
+                  aria-label={section}
+                >
+                  <div className="section-heading">
+                    <h1>{section}</h1>
+                  </div>
+                  <div className="product-grid">
+                    {products.map((p) => (
+                      <button className="product-card" key={p.id} onClick={() => selectProduct(p)}>
+                        <h2>{p.name}</h2>
+                        <strong>{p.price.cents === null ? '—' : money(p.price.cents)}</strong>
+                      </button>
+                    ))}
+                  </div>
+                  {!products.length && (
+                    <div className="empty">
+                      <h3>No items here yet</h3>
+                      <button className="button secondary" onClick={() => setScreen('settings')}>
+                        Edit menu
+                      </button>
+                    </div>
+                  )}
+                </section>
+              )
+            })}
+          </div>
         </main>
         <div className="cart-dock">
           <div className="cart-dock-inner">
@@ -513,7 +501,7 @@ export default function App() {
                   {count} {count === 1 ? 'item' : 'items'}
                 </span>
               </span>
-              <strong>{totalError ? 'Check order' : money(totals.cash)}</strong>
+              <strong>{totalError ? 'Check order' : money(totals.exact)}</strong>
               <span className="view-order">
                 VIEW ORDER
                 <ArrowRight size={18} />
@@ -528,6 +516,7 @@ export default function App() {
         )}
         {selection && selectedProduct && (
           <Sheet
+            builder
             title={selection.editingId ? 'Edit order item' : selectedProduct.name}
             onClose={() => setSelection(null)}
           >
@@ -552,9 +541,18 @@ export default function App() {
               {selectedProduct.customizable && (
                 <>
                   <div className="step-heading">
-                    <h3>Choose protein</h3>
+                    <h3>{selectedProduct.proteinOptional ? 'Add protein' : 'Protein'}</h3>
                   </div>
                   <div className="protein-grid">
+                    {selectedProduct.proteinOptional && (
+                      <button
+                        className={`choice ${!selection.proteinId ? 'selected' : ''}`}
+                        aria-pressed={!selection.proteinId}
+                        onClick={() => setSelection({ ...selection, proteinId: undefined })}
+                      >
+                        <strong>No added protein</strong>
+                      </button>
+                    )}
                     {config.proteins
                       .filter(
                         (p) =>
@@ -598,50 +596,78 @@ export default function App() {
                         onSave={(p) => setProteinPrice(selection.proteinId!, p)}
                       />
                     )}
-                  <div className="step-heading">
-                    <h3>Extras</h3>
-                  </div>
-                  <div className="extras-grid">
-                    {config.extras
-                      .filter(
-                        (e) =>
-                          (e.enabled && !selectedProduct.excludedExtraIds.includes(e.id)) ||
-                          selection.extraIds.includes(e.id),
-                      )
-                      .map((extra) => {
-                        const pricing = getExtraPrice(selectedProduct, extra.id, config),
-                          checked = selection.extraIds.includes(extra.id)
-                        return (
-                          <button
-                            key={extra.id}
-                            className={`choice extra-choice ${checked ? 'selected' : ''}`}
-                            aria-pressed={checked}
-                            onClick={() =>
-                              setSelection({
-                                ...selection,
-                                extraIds: checked
-                                  ? selection.extraIds.filter((id) => id !== extra.id)
-                                  : [...selection.extraIds, extra.id],
-                              })
-                            }
-                          >
-                            <span className="choice-check">
-                              {checked ? <Check size={15} /> : <Plus size={15} />}
-                            </span>
-                            <strong>{extra.name}</strong>
-                            <span>
-                              {pricing.cents === null
-                                ? 'Set price'
-                                : pricing.cents === 0
-                                  ? ''
-                                  : `+${money(pricing.cents)}`}
-                            </span>
-                          </button>
-                        )
-                      })}
-                  </div>
+                  {['Extras', 'Combo-Up'].map((group) => {
+                    const extras = config.extras.filter(
+                      (e) =>
+                        Boolean(e.bundle) === (group === 'Combo-Up') &&
+                        ((e.enabled && !selectedProduct.excludedExtraIds.includes(e.id)) ||
+                          selection.extraIds.includes(e.id)),
+                    )
+                    if (!extras.length) return null
+                    return (
+                      <section key={group} aria-label={group}>
+                        <div className="step-heading">
+                          <h3>{group}</h3>
+                          {group === 'Combo-Up' && <span className="muted">Includes Pop Can</span>}
+                        </div>
+                        <div className="extras-grid">
+                          {extras.map((extra) => {
+                            const included = extraIncluded(
+                              selectedProduct,
+                              extra.id,
+                              config,
+                              selection.proteinId,
+                            )
+                            const pricing = getExtraPrice(
+                              selectedProduct,
+                              extra.id,
+                              config,
+                              selection.proteinId,
+                            )
+                            const checked = selection.extraIds.includes(extra.id) && !included
+                            return (
+                              <button
+                                key={extra.id}
+                                disabled={included}
+                                className={`choice extra-choice ${checked ? 'selected' : ''}`}
+                                aria-pressed={checked}
+                                onClick={() => {
+                                  const remaining = selection.extraIds.filter(
+                                    (id) =>
+                                      id !== extra.id &&
+                                      (!extra.bundle ||
+                                        !config.extras.find((e) => e.id === id)?.bundle),
+                                  )
+                                  setSelection({
+                                    ...selection,
+                                    extraIds: checked ? remaining : [...remaining, extra.id],
+                                  })
+                                }}
+                              >
+                                <strong>{extra.name}</strong>
+                                <span>
+                                  {included
+                                    ? 'Included'
+                                    : pricing.cents === null
+                                      ? 'Set price'
+                                      : pricing.cents === 0
+                                        ? ''
+                                        : '+' + money(pricing.cents)}
+                                </span>
+                                {checked && <Check size={15} />}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </section>
+                    )
+                  })}
                   {selection.extraIds
-                    .filter((id) => getExtraPrice(selectedProduct, id, config).cents === null)
+                    .filter(
+                      (id) =>
+                        getExtraPrice(selectedProduct, id, config, selection.proteinId).cents ===
+                        null,
+                    )
                     .map((id) => (
                       <ResolvePrice
                         key={id}
@@ -649,6 +675,24 @@ export default function App() {
                         onSave={(p) => setExtraPrice(id, p)}
                       />
                     ))}
+                  {selection.extraIds.map((id) => {
+                    const extra = config.extras.find((e) => e.id === id)
+                    return extra?.bundle?.deposit.cents === null ? (
+                      <ResolvePrice
+                        key={`${id}-deposit`}
+                        label={`${extra.name} Combo-Up deposit`}
+                        deposit
+                        onSave={(deposit) =>
+                          setConfig((c) => ({
+                            ...c,
+                            extras: c.extras.map((e) =>
+                              e.id === id ? { ...e, bundle: { ...e.bundle!, deposit } } : e,
+                            ),
+                          }))
+                        }
+                      />
+                    ) : null
+                  })}
                 </>
               )}
               {selectedProduct.deposit.cents === null && (
@@ -683,69 +727,80 @@ export default function App() {
           </Sheet>
         )}
         {screen === 'cart' && (
-          <Sheet title="Your order" onClose={() => setScreen('menu')}>
+          <Sheet checkout title="Your order" onClose={() => setScreen('menu')}>
             <div className="sheet-content cart-content">
               <div className="receipt-heading">
-                <span className="eyebrow">MUCHO CASH HELPER</span>
                 <span>
-                  {count} {count === 1 ? 'item' : 'items'} · Cash only
+                  {count} {count === 1 ? 'item' : 'items'}
                 </span>
               </div>
               {cart.length ? (
                 <>
-                  {renderLines(cart, true)}
-                  <div className="cart-tools">
-                    <button className="text-button" disabled={!undo.length} onClick={undoAction}>
-                      <Undo2 size={17} />
-                      Undo
-                    </button>
-                    <button className="text-button" onClick={() => setConfirmClear(true)}>
-                      <Trash2 size={17} />
-                      Clear order
-                    </button>
+                  <div className="order-summary">
+                    {renderLines(cart, true)}
+                    <div className="cart-tools">
+                      <button className="text-button" disabled={!undo.length} onClick={undoAction}>
+                        <Undo2 size={17} />
+                        Undo
+                      </button>
+                      <button className="text-button" onClick={() => setConfirmClear(true)}>
+                        <Trash2 size={17} />
+                        Clear order
+                      </button>
+                    </div>
+                    {totalError ? (
+                      <p className="error" role="alert">
+                        {totalError}
+                      </p>
+                    ) : (
+                      <ReceiptTotals totals={totals} />
+                    )}
                   </div>
-                  {totalError ? (
-                    <p className="error" role="alert">
-                      {totalError}
-                    </p>
-                  ) : (
-                    <ReceiptTotals totals={totals} />
-                  )}
-                  <div className="tender-heading">
-                    <h3>Cash received</h3>
-                  </div>
-                  <div className="tender-grid">
-                    {[500, 1000, 2000, 5000, 10000].map((amount) => (
+                  <div className="payment-controls">
+                    <button
+                      className="button primary full electronic-pay"
+                      disabled={!!totalError}
+                      onClick={() => done('E_TRANSFER')}
+                    >
+                      <span>PAID WITH E-TRANSFER</span>
+                      <strong>{money(totals.exact)}</strong>
+                    </button>
+                    <div className="tender-heading">
+                      <h3>Cash received</h3>
+                    </div>
+                    <div className="tender-grid">
+                      {[500, 1000, 2000, 5000, 10000].map((amount) => (
+                        <button
+                          key={amount}
+                          className="tender-button"
+                          onClick={() => tender(amount)}
+                          disabled={!!totalError}
+                        >
+                          {money(amount).replace('.00', '')}
+                        </button>
+                      ))}
                       <button
-                        key={amount}
-                        className="tender-button"
-                        onClick={() => tender(amount)}
+                        className="tender-button other"
+                        onClick={() => {
+                          setOther(true)
+                          setOtherText('')
+                        }}
                         disabled={!!totalError}
                       >
-                        {money(amount).replace('.00', '')}
+                        Other
                       </button>
-                    ))}
-                    <button
-                      className="tender-button other"
-                      onClick={() => {
-                        setOther(true)
-                        setOtherText('')
-                      }}
-                      disabled={!!totalError}
-                    >
-                      Other
+                    </div>
+                    {tendered !== null && tendered < totals.cash && (
+                      <div className="remaining" role="alert">
+                        <span>Received {money(tendered)}</span>
+                        <strong>Still owed {money(totals.cash - tendered)}</strong>
+                      </div>
+                    )}
+                    <button className="text-button full" onClick={() => setScreen('menu')}>
+                      <ArrowLeft size={17} />
+                      Add more items
                     </button>
                   </div>
-                  {tendered !== null && tendered < totals.cash && (
-                    <div className="remaining" role="alert">
-                      <span>Received {money(tendered)}</span>
-                      <strong>Still owed {money(totals.cash - tendered)}</strong>
-                    </div>
-                  )}
-                  <button className="text-button full" onClick={() => setScreen('menu')}>
-                    <ArrowLeft size={17} />
-                    Add more items
-                  </button>
                 </>
               ) : (
                 <div className="empty">
@@ -835,7 +890,7 @@ export default function App() {
               )}
             </div>
             <footer className="sheet-footer">
-              <button className="button primary full done-button" onClick={done}>
+              <button className="button primary full done-button" onClick={() => done('CASH')}>
                 DONE / NEXT ORDER
                 <ArrowRight size={23} />
               </button>
@@ -880,10 +935,15 @@ export default function App() {
                             month: 'short',
                             day: 'numeric',
                           })}{' '}
-                          · {order.lines.reduce((n, l) => n + l.quantity, 0)} items
+                          · {order.lines.reduce((n, l) => n + l.quantity, 0)} items ·{' '}
+                          {order.paymentMethod === 'CASH' ? 'Cash' : 'E-transfer'}
                         </span>
                       </div>
-                      <strong>{money(order.totals.cash)}</strong>
+                      <strong>
+                        {money(
+                          order.paymentMethod === 'CASH' ? order.totals.cash : order.totals.exact,
+                        )}
+                      </strong>
                       <ChevronRight size={18} />
                     </button>
                   ))}
@@ -902,10 +962,12 @@ export default function App() {
             <div className="sheet-content">
               <p className="muted">{new Date(viewOrder.timestamp).toLocaleString('en-CA')}</p>
               {renderLines(viewOrder.lines)}
-              <ReceiptTotals totals={viewOrder.totals} />
+              <ReceiptTotals totals={viewOrder.totals} paymentMethod={viewOrder.paymentMethod} />
               <div className="history-payment">
                 <div>
-                  <span>Cash received</span>
+                  <span>
+                    {viewOrder.paymentMethod === 'CASH' ? 'Cash received' : 'Paid with e-transfer'}
+                  </span>
                   <strong>{money(viewOrder.tendered)}</strong>
                 </div>
                 <div>

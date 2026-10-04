@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { X } from 'lucide-react'
-import { type Price, verified } from './model'
+import { type Price, type Totals, type CompletedOrder, verified } from './model'
 import { money, parseMoney } from './money'
 import { ToastContext } from './context'
 
@@ -9,11 +9,15 @@ export function Sheet({
   children,
   onClose,
   wide = false,
+  builder = false,
+  checkout = false,
 }: {
   title: string
   children: ReactNode
   onClose: () => void
   wide?: boolean
+  builder?: boolean
+  checkout?: boolean
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   const toast = useContext(ToastContext)
@@ -32,7 +36,7 @@ export function Sheet({
   return (
     <dialog
       ref={ref}
-      className={`sheet ${wide ? 'wide' : ''}`}
+      className={`sheet ${wide ? 'wide' : ''} ${builder ? 'builder-sheet' : ''} ${checkout ? 'checkout-sheet' : ''}`}
       aria-label={title}
       onCancel={(e) => {
         e.preventDefault()
@@ -161,15 +165,10 @@ export function ResolvePrice({
 }
 export function ReceiptTotals({
   totals,
+  paymentMethod,
 }: {
-  totals: {
-    subtotal: number
-    gst: number
-    pst: number
-    deposits: number
-    rounding: number
-    cash: number
-  }
+  totals: Totals
+  paymentMethod?: CompletedOrder['paymentMethod']
 }) {
   return (
     <div className="receipt-totals">
@@ -191,7 +190,13 @@ export function ReceiptTotals({
           <span>{money(totals.deposits)}</span>
         </div>
       )}
-      {totals.rounding !== 0 && (
+      {paymentMethod !== 'CASH' && (
+        <div className="electronic-total">
+          <span>E-TRANSFER TOTAL</span>
+          <strong>{money(totals.exact)}</strong>
+        </div>
+      )}
+      {paymentMethod !== 'E_TRANSFER' && totals.rounding !== 0 && (
         <div className="muted">
           <span>Cash rounding</span>
           <span>
@@ -200,10 +205,12 @@ export function ReceiptTotals({
           </span>
         </div>
       )}
-      <div className="cash-total">
-        <span>CASH TOTAL</span>
-        <strong>{money(totals.cash)}</strong>
-      </div>
+      {paymentMethod !== 'E_TRANSFER' && (
+        <div className="cash-total">
+          <span>CASH TOTAL</span>
+          <strong>{money(totals.cash)}</strong>
+        </div>
+      )}
     </div>
   )
 }

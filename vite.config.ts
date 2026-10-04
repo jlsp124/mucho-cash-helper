@@ -14,7 +14,7 @@ export default defineConfig({
         id: '/mucho-cash-helper/',
         name: 'Mucho Cash Helper',
         short_name: 'Mucho Cash',
-        description: 'Unofficial, offline cash checkout helper for Prince George, BC.',
+        description: 'Store ordering, cash and e-transfer checkout for Prince George, BC.',
         start_url: '/mucho-cash-helper/',
         scope: '/mucho-cash-helper/',
         display: 'standalone',
