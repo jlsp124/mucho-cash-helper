@@ -1,33 +1,54 @@
-# Default menu-data notes
+# Store pricing defaults — revision 4
 
-The checked-in menu values are development defaults for the public project. They are useful for exercising the pricing engine, migrations, tax handling, modifier rules and browser tests, but they are **not intended to be an authoritative price list for any restaurant location**.
+These defaults reflect the location-specific menu and workflow configuration used by the internal tool. Store-specific menu boards and other in-store reference material take priority; older defaults remain only where no newer store-specific value was available. All prices below are pre-tax CAD.
 
-Real deployments should verify and maintain their own configuration through the app's editable settings and versioned JSON import/export flow.
+| Entrée                                                          |                             Price |
+| --------------------------------------------------------------- | --------------------------------: |
+| Small / Regular / MUCHO Burrito                                 |          $10.75 / $12.45 / $15.75 |
+| Single Taco / Taco Trio                                         |                    $4.45 / $12.45 |
+| Bowl / Bowl with 2× Protein                                     |                   $13.75 / $16.75 |
+| Veggie / Protein Quesadilla                                     |                   $10.95 / $13.95 |
+| Honey Chili Chicken Small / Regular / MUCHO / Bowl              | $11.75 / $13.75 / $16.75 / $14.75 |
+| Kids Meal                                                       |                             $6.95 |
 
-## Configuration model
+Grilled Chicken, Crispy Chicken, Chorizo, Ancho Ground Beef, Pork Carnitas and Fajita Veggies are included. Steak, Beef Barbacoa and Shiitake Carnitas add $2 to the entrée, including a Taco Trio; there is no automatic per-taco multiplication. Protein Quesadilla starts at $13.95 before a premium surcharge. Honey Chili products offer only grilled/crispy chicken.
 
-Each product can define a base price, category, tax class, refundable deposit, availability, and optional customization rules. Proteins and extras can be priced globally or overridden for individual products. A full-price override can replace the normal base-plus-protein calculation while still allowing other extras to be applied.
+Guacamole adds $2.50. MUCHO Burrito and Fajita Veggies include guacamole. The included-extra rules operate in the pricing engine and UI, including stale cart selections and full-price overrides. The 2× bowl already includes extra protein. Extra Protein adds $3 elsewhere. Queso retains its existing $3 fallback because no newer store-specific price was available.
 
-Included extras are represented explicitly so they remain non-chargeable even when an old cart snapshot or product override is involved. Optional bundles can carry a configurable soda allocation and refundable container deposit without double-counting the standalone drink price.
+| Side                           | Regular | MUCHO |
+| ------------------------------ | ------: | ----: |
+| Signature Spiced Mercado Fries |   $4.95 | $7.95 |
+| Creamy Queso Mercado Fries     |   $5.95 | $8.95 |
+| Loaded Nachos                  |   $5.95 |     — |
+| Chips & Salsa                  |   $3.45 | $5.95 |
+| Chips & Guac                   |   $4.45 | $7.45 |
+| Chips & Queso                  |   $4.45 | $7.45 |
 
-## Taxes and cash handling
+Creamy Queso Fries and Loaded Nachos optionally add any protein for $2. Salsa Flight is $6.95. Churro Fries (6 pieces) is $3.50; Chocolate Chunk Cookies (2 cookies) is $2.50.
 
-Tax classes and rates are centralized in configuration. Money is stored as integer Canadian cents and taxes are rounded deterministically.
+| Drink                                                                | Price | Tax class      |
+| -------------------------------------------------------------------- | ----: | -------------- |
+| Pop Can                                                              | $2.25 | SODA           |
+| Pop Bottle                                                           | $3.50 | SODA           |
+| Jarritos                                                             | $3.75 | SODA           |
+| Water Bottle                                                         | $2.95 | NON_SODA_DRINK |
+| Juice Bottle                                                         | $3.75 | NON_SODA_DRINK |
+| Premium Bottle (non-carbonated, represented by existing iced-tea ID) | $3.75 | NON_SODA_DRINK |
 
-For the default Canadian configuration, cash is rounded once to the nearest $0.05 while electronic payments retain the exact calculated total. Refundable deposits are represented separately from taxable line amounts.
+Stable IDs let existing deliberate drink prices/deposits migrate. Flavour variants, four-packs, fountain soda, alcohol and delivery bundles are disabled. Sweetened carbonated premium drinks must use SODA rather than the non-carbonated Premium Bottle category.
 
-The bundled-soda handling was designed around British Columbia's public guidance for soda beverages sold with food:
+## Combo-Up
 
-- https://www2.gov.bc.ca/gov/content/taxes/sales-taxes/pst/publications/food-beverage-service-providers-retail-liquor-sellers
+Chips & Salsa $4.45; Loaded Nachos $6.95; Signature Mercado Fries $5.95; Churro Fries $4.95. Each includes one Pop Can. One bundle may be selected per entrée and remains part of the same editable order line. The can's standalone price is never added to the bundle price.
 
-Container-deposit defaults can be reviewed against public Return-It guidance:
+The included soda PST base defaults to the standalone Pop Can price of $2.25, capped at the bundle price. This follows [BC's soda beverages sold with food rule](https://www2.gov.bc.ca/gov/content/taxes/sales-taxes/pst/publications/food-beverage-service-providers-retail-liquor-sellers): for beverages also sold separately, PST applies to the lesser of ordinary drink price and total bundled price. GST applies to the full order price. Managers can edit bundle prices, soda allocations, product-specific overrides and deposits under Extras in Menu & Prices. If the Pop Can price changes, review the included soda portion of each Combo-Up too.
 
-- https://www.return-it.ca/beverage/recycling/recycling-plastic-bottles/
+Container deposits retain the existing [BC Return-It](https://www.return-it.ca/beverage/recycling/recycling-plastic-bottles/) default of 10 cents per container. A Combo-Up adds exactly one 10-cent deposit, separately from its pre-tax menu price. Deposits are editable and untaxed; changing them never adds a second drink price.
 
-## Versioned defaults and migrations
+## Fallback values
 
-The app keeps frozen earlier default sets only as migration baselines. New default revisions can add or correct fields while preserving deliberate user changes where the old state can be distinguished from an untouched shipped value.
+The following useful older fallback prices remain editable where no newer store-specific replacement was available: Salad $16.75; Queso extra $3; Honey Chili Sauce extra $1.25; Salsa 4oz $2.75; Guacamole/Queso 4oz $3.75; 10-inch Tortilla $0.55; signature Shiitake Burrito/Bowl $10.75/$13.75. Extra Cheese, plain Chips and generic LTO remain unknown/disabled. Catering/delivery bundles and unneeded drink variants remain available only in settings, disabled by default.
 
-Completed receipts always retain their historical charged amounts. Active cart snapshots are repriced only when they can be safely matched to current configuration.
+Absence from current signage is not treated as proof that an existing product is unavailable. Revision 4 restores the six non-drink products that were enabled in v2 and incorrectly hidden in v3: Zesty Fresca Fries Regular $7.20 / MUCHO $10.20; MUCHO Churro Fries $14.95; MUCHO Cookies $12.95; Mucho’s Way Burrito $13.45 / Bowl $16.75. Their previous editable fallback prices remain unchanged. The full v2/v3 audit found no additional accidentally hidden non-drink products. Products already disabled before v3 stay disabled; simplified drinks are preserved.
 
-This migration system is intentionally conservative: when the software cannot reliably determine whether a stored value was a deliberate edit or an untouched old default, it prefers preserving the user's stored value rather than silently changing it.
+Frozen earlier defaults are migration evidence only. Never change them to revise the current menu. Completed receipts retain their historical charged amounts. Revision 4 uses a frozen v3 baseline to restore untouched accidental disables on installed devices. Changed product records that remain disabled are conservatively kept disabled; their changed prices, tax classes and overrides survive. V3 recorded only the enabled boolean, so an explicit manager disable identical to the untouched shipped record cannot be distinguished retrospectively. All other explicit availability changes survive. V3 cart snapshots and all completed receipts are unchanged. Older v1/v2 upgrades still receive the current store defaults and corrected nested modifiers; no browser storage clearing is needed.
