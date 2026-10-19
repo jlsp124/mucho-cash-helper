@@ -1,8 +1,8 @@
 import { configSchema, verified, type Config, type Product } from './model'
 import { defaultsV2 } from './defaults-v2'
 
-// Development defaults used by the public project and migration tests.
-// Deployments should verify and maintain their own configuration. See docs/pricing-seeds.md.
+// Store-specific defaults from the location where this internal tool was used.
+// Older fallbacks remain where no newer store-specific value was available. See docs/pricing-seeds.md.
 export const DEFAULTS_VERSION = 4
 export const defaults = structuredClone(defaultsV2)
 defaults.defaultsVersion = DEFAULTS_VERSION
@@ -110,7 +110,7 @@ for (const [id, name, cents, taxClass] of [
   ['jarritos', 'Jarritos', 375, 'SODA'],
 ] as const)
   Object.assign(find(id), { name, price: verified(cents), taxClass, enabled: true })
-// Keep existing non-drink products when no newer development default is supplied.
+// Keep existing non-drink products when no newer store-specific price was available.
 find('zesty-fries-mucho').name = 'Zesty Fresca Fries · MUCHO'
 find('mucho-churros').name = 'MUCHO Churro Fries'
 find('mucho-cookies').name = 'MUCHO Cookies'
