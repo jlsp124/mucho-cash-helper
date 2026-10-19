@@ -1,8 +1,8 @@
 import { configSchema, verified, type Config, type Product } from './model'
 import { defaultsV2 } from './defaults-v2'
 
-// Physical PG boards supplied 2026-10-03; handwritten kids/guac reference.
-// Unsupplied prices retain v2 fallback values. See docs/pricing-seeds.md.
+// Development defaults used by the public project and migration tests.
+// Deployments should verify and maintain their own configuration. See docs/pricing-seeds.md.
 export const DEFAULTS_VERSION = 4
 export const defaults = structuredClone(defaultsV2)
 defaults.defaultsVersion = DEFAULTS_VERSION
@@ -110,7 +110,7 @@ for (const [id, name, cents, taxClass] of [
   ['jarritos', 'Jarritos', 375, 'SODA'],
 ] as const)
   Object.assign(find(id), { name, price: verified(cents), taxClass, enabled: true })
-// Keep existing non-drink products when no newer physical price was supplied.
+// Keep existing non-drink products when no newer development default is supplied.
 find('zesty-fries-mucho').name = 'Zesty Fresca Fries · MUCHO'
 find('mucho-churros').name = 'MUCHO Churro Fries'
 find('mucho-cookies').name = 'MUCHO Cookies'
